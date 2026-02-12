@@ -954,6 +954,7 @@ impl BamlAsyncVmRuntime {
     }
 
     // Code generation methods
+    #[cfg(feature = "codegen")]
     pub fn run_codegen(
         &self,
         input_files: &indexmap::IndexMap<std::path::PathBuf, String>,
@@ -965,6 +966,7 @@ impl BamlAsyncVmRuntime {
             .run_codegen(input_files, no_version_check, generator_type, strip_tests)
     }
 
+    #[cfg(feature = "codegen")]
     pub fn codegen_generators(
         &self,
     ) -> impl Iterator<Item = &internal_baml_core::configuration::CodegenGenerator> {

@@ -1,5 +1,8 @@
-use std::{fmt, sync::Arc};
+use std::fmt;
+#[cfg(feature = "minijinja")]
+use std::sync::Arc;
 
+#[cfg(feature = "minijinja")]
 use crate::{BamlMedia, BamlValue};
 
 /// A wrapper around a jinja expression. The inner `String` should not contain
@@ -14,6 +17,7 @@ impl fmt::Display for JinjaExpression {
     }
 }
 
+#[cfg(feature = "minijinja")]
 impl From<BamlValue> for minijinja::Value {
     fn from(arg: BamlValue) -> minijinja::Value {
         match arg {
@@ -40,24 +44,29 @@ impl From<BamlValue> for minijinja::Value {
     }
 }
 
+#[cfg(feature = "minijinja")]
 struct MinijinjaBamlMedia {
     media: BamlMedia,
 }
 
+#[cfg(feature = "minijinja")]
 impl From<BamlMedia> for MinijinjaBamlMedia {
     fn from(media: BamlMedia) -> MinijinjaBamlMedia {
         MinijinjaBamlMedia { media }
     }
 }
 
+#[cfg(feature = "minijinja")]
 impl From<BamlMedia> for minijinja::Value {
     fn from(arg: BamlMedia) -> minijinja::Value {
         minijinja::Value::from_object(MinijinjaBamlMedia::from(arg))
     }
 }
 
+#[cfg(feature = "minijinja")]
 const MAGIC_MEDIA_DELIMITER: &str = "BAML_MEDIA_MAGIC_STRING_DELIMITER";
 
+#[cfg(feature = "minijinja")]
 impl std::fmt::Display for MinijinjaBamlMedia {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
@@ -70,12 +79,14 @@ impl std::fmt::Display for MinijinjaBamlMedia {
 
 // Necessary for nested instances of MinijinjaBamlImage to get rendered correctly in prompts
 // See https://github.com/BoundaryML/baml/pull/855 for explanation
+#[cfg(feature = "minijinja")]
 impl std::fmt::Debug for MinijinjaBamlMedia {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         std::fmt::Display::fmt(self, f)
     }
 }
 
+#[cfg(feature = "minijinja")]
 impl minijinja::value::Object for MinijinjaBamlMedia {
     fn call(
         self: &Arc<Self>,

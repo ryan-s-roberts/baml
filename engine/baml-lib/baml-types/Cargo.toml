@@ -17,16 +17,14 @@ type_complexity = "allow"
 
 # Attention:
 #   Please try to keep this crate low-dependency! We want to keep this as minimal as possible.
+#
+# For minimal library consumption use: default-features = false, features = ["stable_sort"]
 [dependencies]
 anyhow.workspace = true
-clap.workspace = true
-derive_builder.workspace = true
 internal-baml-diagnostics = { path = "../diagnostics" }
 itertools.workspace = true
 log.workspace = true
-minijinja.workspace = true
 once_cell.workspace = true
-pretty.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -38,11 +36,29 @@ tokio.workspace = true
 uuid.workspace = true
 baml-ids.workspace = true
 
+[dependencies.clap]
+workspace = true
+optional = true
+
+[dependencies.minijinja]
+workspace = true
+optional = true
+
+[dependencies.pretty]
+workspace = true
+optional = true
+
 [dependencies.indexmap]
 workspace = true
 optional = true
 
 
 [features]
-default = ["stable_sort"]
+default = ["stable_sort", "cli", "minijinja", "pretty"]
 stable_sort = ["indexmap"]
+# CLI-only (ValueEnum for GeneratorOutputType)
+cli = ["dep:clap"]
+# Minijinja integration (From<BamlValue> for minijinja::Value, etc.)
+minijinja = ["dep:minijinja"]
+# Pretty-printing (RcDoc-based to_doc)
+pretty = ["dep:pretty"]

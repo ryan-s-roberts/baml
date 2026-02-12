@@ -75,6 +75,7 @@ impl GeneratorOutputType {
     }
 }
 
+#[cfg(feature = "cli")]
 impl clap::ValueEnum for GeneratorOutputType {
     fn value_variants<'a>() -> &'a [Self] {
         use strum::VariantArray;

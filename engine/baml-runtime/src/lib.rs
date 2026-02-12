@@ -5,17 +5,17 @@ pub mod internal;
 #[cfg(not(feature = "internal"))]
 pub(crate) mod internal;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "cli"))]
 pub mod cli;
 pub mod client_registry;
 pub mod errors;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "cli"))]
 pub mod optimize;
 pub mod request;
 pub mod runtime;
 pub mod runtime_interface;
 pub mod test_constraints;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "cli"))]
 pub mod test_executor;
 
 pub mod async_interpreter_runtime;
@@ -49,7 +49,7 @@ use baml_types::{
     BamlMap, BamlValue, BamlValueWithMeta, Completion, Constraint,
 };
 use cfg_if::cfg_if;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "cli"))]
 pub use cli::RuntimeCliDefaults;
 use client_registry::{ClientProperty, ClientRegistry};
 use control_flow::{build_from_hir, flatten::flatten_control_flow, ControlFlowVisualization};
@@ -57,6 +57,7 @@ use futures::{
     channel::mpsc,
     future::{join, join_all},
 };
+#[cfg(feature = "codegen")]
 use generators_lib::{
     version_check::{self, GeneratorType, VersionCheckMode},
     GenerateOutput, GeneratorArgs,
@@ -1615,7 +1616,7 @@ impl BamlRuntime {
         renderer.parse(self.ir(), &ctx, &llm_response, allow_partials)
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "codegen"))]
     fn generate_client(
         &self,
         client_type: &GeneratorOutputType,
@@ -1645,12 +1646,15 @@ impl BamlRuntime {
     }
 }
 
-// Interfaces for generators
 impl BamlRuntime {
     pub fn function_names(&self) -> impl Iterator<Item = &str> {
         self.ir().function_names()
     }
+}
 
+// Interfaces for generators (codegen only)
+#[cfg(feature = "codegen")]
+impl BamlRuntime {
     /// Determine the file containing the generators.
     pub fn generator_path(&self) -> Option<PathBuf> {
         let path_counts: HashMap<&PathBuf, u32> = self
@@ -2217,9 +2221,21 @@ impl InternalRuntimeInterface for BamlRuntime {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn baml_src_files(dir: &std::path::PathBuf) -> Result<Vec<PathBuf>> {
-    static VALID_EXTENSIONS: [&str; 1] = ["baml"];
+fn collect_baml_files(dir: &std::path::Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in std::fs::read_dir(dir).context("reading directory")? {
+        let entry = entry.context("reading directory entry")?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_baml_files(&path, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("baml") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn baml_src_files(dir: &std::path::PathBuf) -> Result<Vec<PathBuf>> {
     log::trace!("Reading files from {:#}", dir.to_string_lossy());
 
     if !dir.exists() {
@@ -2236,27 +2252,8 @@ pub fn baml_src_files(dir: &std::path::PathBuf) -> Result<Vec<PathBuf>> {
         ));
     }
 
-    let src_files = walkdir::WalkDir::new(dir)
-        .into_iter()
-        .filter_map(|e| match e {
-            Ok(e) => Some(e),
-            Err(e) => {
-                log::error!("Error while reading files from {dir:#?}: {e}");
-                None
-            }
-        })
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| {
-            let Some(ext) = e.path().extension() else {
-                return false;
-            };
-            let Some(ext) = ext.to_str() else {
-                return false;
-            };
-            VALID_EXTENSIONS.contains(&ext)
-        })
-        .map(|e| e.path().to_path_buf())
-        .collect::<Vec<_>>();
+    let mut src_files = Vec::new();
+    collect_baml_files(dir, &mut src_files)?;
 
     if !src_files
         .iter()

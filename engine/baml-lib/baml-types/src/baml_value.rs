@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::Result;
 use indexmap::IndexMap;
+#[cfg(feature = "pretty")]
 use pretty::RcDoc;
 use serde::{de::Visitor, ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -104,7 +105,8 @@ impl BamlValue {
         }
     }
 
-    /// Convert this BamlValue to a pretty printing document
+    /// Convert this BamlValue to a pretty printing document (requires `pretty` feature)
+    #[cfg(feature = "pretty")]
     pub fn to_doc(&self) -> RcDoc<'static, ()> {
         match self {
             BamlValue::Null => RcDoc::text("null"),
@@ -901,7 +903,8 @@ impl<T> BamlValueWithMeta<T> {
         plain_value.r#type()
     }
 
-    /// Convert this BamlValueWithMeta to a pretty printing document
+    /// Convert this BamlValueWithMeta to a pretty printing document (requires `pretty` feature)
+    #[cfg(feature = "pretty")]
     pub fn to_doc(&self) -> RcDoc<'static, ()> {
         match self {
             BamlValueWithMeta::Null(_) => RcDoc::text("null"),
@@ -1498,6 +1501,7 @@ fn add_checks<'a, S: SerializeMap>(
     Ok(())
 }
 
+#[cfg(feature = "pretty")]
 fn format_media(media: &BamlMedia) -> RcDoc<'static, ()> {
     match &media.content {
         crate::BamlMediaContent::Url(url) => {
@@ -1526,6 +1530,7 @@ fn format_media(media: &BamlMedia) -> RcDoc<'static, ()> {
     }
 }
 
+#[cfg(feature = "pretty")]
 fn escape_string(s: &str) -> String {
     s.chars()
         .map(|c| match c {

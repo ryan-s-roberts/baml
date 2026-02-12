@@ -1382,7 +1382,6 @@ dependencies = [
  "anyhow",
  "baml-ids",
  "clap",
- "derive_builder",
  "indexmap 2.9.0",
  "internal-baml-diagnostics",
  "itertools 0.14.0",
