@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use colored::*;
 pub mod llm_provider;
 pub mod orchestrator;
 pub mod primitive;
@@ -166,14 +165,20 @@ impl crate::tracing::Visualize for LLMResponse {
             Self::UserFailure(message) => {
                 format!(
                     "{}",
-                    format!("Failed before LLM call (user error): {message}").red()
+                    crate::style::red(format!("Failed before LLM call (user error): {message}"))
                 )
             }
             Self::InternalFailure(message) => {
-                format!("{}", format!("Failed before LLM call: {message}").red())
+                format!(
+                    "{}",
+                    crate::style::red(format!("Failed before LLM call: {message}"))
+                )
             }
             Self::Cancelled(message) => {
-                format!("{}", format!("Operation cancelled: {message}").yellow())
+                format!(
+                    "{}",
+                    crate::style::yellow(format!("Operation cancelled: {message}"))
+                )
             }
         }
     }
@@ -328,7 +333,7 @@ impl std::fmt::Display for LLMCompleteResponse {
         writeln!(
             f,
             "{}",
-            format!(
+            crate::style::yellow(format!(
                 "Client: {} ({}) - {}ms. StopReason: {}. Tokens(in/out): {}/{}",
                 self.client,
                 self.model,
@@ -342,13 +347,12 @@ impl std::fmt::Display for LLMCompleteResponse {
                     .output_tokens
                     .map(|t| t.to_string())
                     .unwrap_or_else(|| "unknown".to_string()),
-            )
-            .yellow()
+            ))
         )?;
-        writeln!(f, "{}", "---PROMPT---".blue())?;
-        writeln!(f, "{}", self.prompt.to_string().dimmed())?;
-        writeln!(f, "{}", "---LLM REPLY---".blue())?;
-        write!(f, "{}", self.content.dimmed())
+        writeln!(f, "{}", crate::style::blue("---PROMPT---"))?;
+        writeln!(f, "{}", crate::style::dimmed(self.prompt.to_string()))?;
+        writeln!(f, "{}", crate::style::blue("---LLM REPLY---"))?;
+        write!(f, "{}", crate::style::dimmed(&self.content))
     }
 }
 
@@ -358,7 +362,7 @@ impl crate::tracing::Visualize for LLMCompleteResponse {
         let s = [
             format!(
                 "{}",
-                format!(
+                crate::style::yellow(format!(
                     "Client: {} ({}) - {}ms. StopReason: {}. Tokens(in/out): {}/{}",
                     self.client,
                     self.model,
@@ -372,19 +376,23 @@ impl crate::tracing::Visualize for LLMCompleteResponse {
                         .output_tokens
                         .map(|t| t.to_string())
                         .unwrap_or_else(|| "unknown".to_string()),
-                )
-                .yellow()
+                ))
             ),
-            format!("{}", "---PROMPT---".blue()),
+            format!("{}", crate::style::blue("---PROMPT---")),
             format!(
                 "{}",
-                crate::tracing::truncate_string(&self.prompt.to_string(), max_chunk_size.clone())
-                    .dimmed()
+                crate::style::dimmed(crate::tracing::truncate_string(
+                    &self.prompt.to_string(),
+                    max_chunk_size.clone(),
+                ))
             ),
-            format!("{}", "---LLM REPLY---".blue()),
+            format!("{}", crate::style::blue("---LLM REPLY---")),
             format!(
                 "{}",
-                crate::tracing::truncate_string(&self.content, max_chunk_size).dimmed()
+                crate::style::dimmed(crate::tracing::truncate_string(
+                    &self.content,
+                    max_chunk_size,
+                ))
             ),
         ];
         s.join("\n")
@@ -396,21 +404,22 @@ impl crate::tracing::Visualize for LLMErrorResponse {
         let mut s = vec![
             format!(
                 "{}",
-                format!(
+                crate::style::yellow(format!(
                     "Client: {} ({}) - {}ms",
                     self.client,
                     self.model.as_deref().unwrap_or("<unknown>"),
                     self.latency.as_millis(),
-                )
-                .yellow(),
+                ))
             ),
-            format!("{}", "---PROMPT---".blue()),
+            format!("{}", crate::style::blue("---PROMPT---")),
             format!(
                 "{}",
-                crate::tracing::truncate_string(&self.prompt.to_string(), max_chunk_size.clone())
-                    .dimmed()
+                crate::style::dimmed(crate::tracing::truncate_string(
+                    &self.prompt.to_string(),
+                    max_chunk_size.clone(),
+                ))
             ),
-            format!("{}", "---REQUEST OPTIONS---".blue()),
+            format!("{}", crate::style::blue("---REQUEST OPTIONS---")),
         ];
         for (k, v) in &self.request_options {
             s.push(format!(
@@ -419,10 +428,16 @@ impl crate::tracing::Visualize for LLMErrorResponse {
                 crate::tracing::truncate_string(&v.to_string(), max_chunk_size.clone())
             ));
         }
-        s.push(format!("{}", format!("---ERROR ({})---", self.code).red()));
         s.push(format!(
             "{}",
-            crate::tracing::truncate_string(&self.message, max_chunk_size.clone()).red()
+            crate::style::red(format!("---ERROR ({})---", self.code))
+        ));
+        s.push(format!(
+            "{}",
+            crate::style::red(crate::tracing::truncate_string(
+                &self.message,
+                max_chunk_size.clone(),
+            ))
         ));
         s.join("\n")
     }

@@ -14,7 +14,10 @@ pub mod optimize;
 pub mod request;
 pub mod runtime;
 pub mod runtime_interface;
+#[cfg(feature = "cli")]
 pub mod test_constraints;
+#[cfg(not(feature = "cli"))]
+mod test_constraints_stub;
 #[cfg(all(not(target_arch = "wasm32"), feature = "cli"))]
 pub mod test_executor;
 
@@ -23,6 +26,7 @@ pub mod async_vm_runtime;
 pub mod control_flow;
 mod redaction;
 mod runtime_methods;
+mod style;
 pub mod tracing;
 pub mod tracingv2;
 pub mod type_builder;
@@ -112,10 +116,13 @@ use type_builder::TypeBuilder;
 pub use types::*;
 use web_time::{Duration, SystemTime};
 
+#[cfg(feature = "cli")]
+use crate::test_constraints::{evaluate_test_constraints, TestConstraintsResult};
+#[cfg(not(feature = "cli"))]
+use crate::test_constraints_stub::{evaluate_test_constraints, TestConstraintsResult};
 use crate::{
     errors::IntoBamlError,
     internal::llm_client::{LLMCompleteResponse, LLMCompleteResponseMetadata, LLMResponse},
-    test_constraints::{evaluate_test_constraints, TestConstraintsResult},
 };
 
 #[cfg(not(target_arch = "wasm32"))]

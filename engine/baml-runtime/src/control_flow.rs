@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use baml_compiler::hir;
 use indexmap::IndexMap;
 use internal_baml_core::ast::Span;
+#[cfg(feature = "pretty")]
 use pretty::RcDoc;
 
 pub mod flatten;
@@ -875,9 +876,17 @@ fn expression_span(expr: &hir::Expression) -> Span {
 }
 
 fn render_expression(expr: &hir::Expression) -> String {
-    collapse_whitespace(&doc_to_string(expr.to_doc()))
+    #[cfg(feature = "pretty")]
+    {
+        collapse_whitespace(&doc_to_string(expr.to_doc()))
+    }
+    #[cfg(not(feature = "pretty"))]
+    {
+        collapse_whitespace(&format!("{:?}", expr))
+    }
 }
 
+#[cfg(feature = "pretty")]
 fn doc_to_string(doc: RcDoc<'_, ()>) -> String {
     let mut buffer = Vec::new();
     let _ = doc.render(80, &mut buffer);

@@ -173,8 +173,14 @@ baml-runtime = { git = "https://github.com/YOUR_ORG/baml", default-features = fa
 
 With `default-features = false` and `features = ["minimal-runtime"]`, the following are **not** included:
 
-- **cli** (clap, axum, ratatui, indicatif, reedline, notify-debouncer-full, walkdir, which, dirs, crossterm, etc.)
+- **cli** (clap, axum, ratatui, indicatif, reedline, notify-debouncer-full, walkdir, which, dirs, crossterm, **minijinja**, **colored**, **pretty**, etc.)
 - **codegen** (generators-lib, generators-openapi)
 - **baml-viz-events**
+- **colored** and **pretty** (terminal styling and RcDoc-based control-flow rendering; minimal uses plain strings and `Debug` for expressions)
+- **env_logger** (moved to dev-dependencies; only used in tests)
+
+**Brutal trim (minimal surface only):** When `cli` is off, the full `test_constraints` module (which uses minijinja for evaluating test checks) is not compiled. A stub provides `TestConstraintsResult` and `evaluate_test_constraints` (no-op returning empty), so `run_test` / `run_expr_test` still compile and run but do not evaluate constraints. This keeps **minijinja** out of the minimal dependency tree. A **style** module provides colored-vs-plain output: with `colored` feature, terminal colors; without, plain strings. Control-flow expression rendering uses **pretty** (RcDoc) when enabled, or `format!("{:?}", expr)` when not.
+
+**internal-baml-core:** Optional **rayon** (feature `rayon`, on by default) for parallel parsing in `validate()`; use `default-features = false` for sequential-only. The unused **whoami** dependency was removed.
 
 The runtime still includes: VM/interpreter, LLM clients, `from_directory`, `build_request`, streaming, tracing storage (Collector, LLMCall), and all types needed for the surface in §6.1–6.3.

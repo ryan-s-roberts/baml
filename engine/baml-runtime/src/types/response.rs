@@ -1,15 +1,17 @@
 use anyhow::Result;
 use baml_types::{BamlValue, BamlValueWithMeta};
-use colored::*;
 use jsonish::{
     deserializer::deserialize_flags::Flag, BamlValueWithFlags, ResponseBamlValue, SerializeMode,
 };
 
 pub use crate::internal::llm_client::LLMResponse;
+#[cfg(feature = "cli")]
+use crate::test_constraints::TestConstraintsResult;
+#[cfg(not(feature = "cli"))]
+use crate::test_constraints_stub::TestConstraintsResult;
 use crate::{
     errors::ExposedError,
     internal::llm_client::{orchestrator::OrchestrationScope, ErrorCode},
-    test_constraints::TestConstraintsResult,
 };
 
 #[derive(Debug)]
@@ -28,7 +30,10 @@ impl std::fmt::Display for FunctionResult {
             writeln!(
                 f,
                 "{}",
-                format!("({} other previous tries)", self.event_chain.len() - 1).yellow()
+                crate::style::yellow(format!(
+                    "({} other previous tries)",
+                    self.event_chain.len() - 1
+                ))
             )?;
         }
         writeln!(f, "{}", self.llm_response())?;
@@ -37,13 +42,13 @@ impl std::fmt::Display for FunctionResult {
                 writeln!(
                     f,
                     "{}",
-                    format!("---Parsed Response ({})---", val.0.r#type()).blue()
+                    crate::style::blue(format!("---Parsed Response ({})---", val.0.r#type()))
                 )?;
                 write!(f, "{:#}", serde_json::json!(val.serialize_partial()))
             }
             Some(Err(e)) => {
-                writeln!(f, "{}", "---Parsed Response---".blue())?;
-                write!(f, "{}", e.to_string().red())
+                writeln!(f, "{}", crate::style::blue("---Parsed Response---"))?;
+                write!(f, "{}", crate::style::red(e.to_string()))
             }
             None => Ok(()),
         }
@@ -346,13 +351,13 @@ impl std::fmt::Display for TestResponse {
                     writeln!(
                         f,
                         "{}",
-                        format!("---Parsed Response ({})---", val.0.r#type()).blue()
+                        crate::style::blue(format!("---Parsed Response ({})---", val.0.r#type()))
                     )?;
                     write!(f, "{:#}", serde_json::json!(val.serialize_partial()))
                 }
                 Err(e) => {
-                    writeln!(f, "{}", "---Parsed Response---".blue())?;
-                    write!(f, "{}", e.to_string().red())
+                    writeln!(f, "{}", crate::style::blue("---Parsed Response---"))?;
+                    write!(f, "{}", crate::style::red(e.to_string()))
                 }
             }
         } else {

@@ -39,14 +39,13 @@ baml-vm = { path = "../baml-vm" }
 base64.workspace = true
 bytes.workspace = true
 cfg-if.workspace = true
-colored.workspace = true
+colored = { workspace = true, optional = true }
 cowstr.workspace = true
 dashmap.workspace = true
 derive-new.workspace = true
 derive_more.workspace = true
 dunce = "1.0.4"
 either.workspace = true
-env_logger.workspace = true
 eventsource-stream = "0.2.3"
 futures.workspace = true
 http.workspace = true
@@ -60,9 +59,9 @@ internal-llm-client.workspace = true
 internal-baml-core.workspace = true
 internal-baml-jinja.workspace = true
 log.workspace = true
-minijinja.workspace = true
+minijinja = { workspace = true, optional = true }
 pin-project-lite.workspace = true
-pretty.workspace = true
+pretty = { workspace = true, optional = true }
 percent-encoding = "2.3.1"
 regex.workspace = true
 reqwest-eventsource = "0.6.0"
@@ -224,10 +223,14 @@ reedline = { version = "0.37", optional = true }
 
 
 [features]
-default = ["skip-integ-tests", "codegen", "cli"]
+default = ["skip-integ-tests", "codegen", "cli", "colored", "pretty"]
 defaults = ["skip-integ-tests"]
 internal = []
 skip-integ-tests = []
+# Colored terminal output (Display impls, tracing). Off in minimal-runtime.
+colored = ["dep:colored"]
+# Pretty-print control-flow (RcDoc). Off in minimal-runtime.
+pretty = ["dep:pretty"]
 # Use the THIR interpreter runtime instead of the VM bytecode runtime
 thir-interpreter = []
 # Minimal library surface: no CLI, no codegen. Use: default-features = false, features = ["minimal-runtime"]
@@ -238,6 +241,9 @@ codegen = ["dep:generators-lib", "dep:generators-openapi"]
 # When cli is enabled, dependents (e.g. baml-cli) typically add tokio with "full"; Cargo unifies to full.
 cli = [
   "dep:clap",
+  "dep:minijinja",
+  "colored",
+  "pretty",
   "dep:axum",
   "dep:axum-extra",
   "dep:criterion",
@@ -258,6 +264,7 @@ cli = [
 [dev-dependencies]
 assert_cmd = "2"
 console_log = "1"
+env_logger.workspace = true
 criterion = "0.5.1"
 dissimilar = "1.0.4"
 expect-test = "1.1.0"

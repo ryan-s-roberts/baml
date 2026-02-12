@@ -13,7 +13,6 @@ use baml_types::{
     BamlMap, BamlMediaType, BamlValue, BamlValueWithMeta,
 };
 use cfg_if::cfg_if;
-use colored::{ColoredString, Colorize};
 use internal_baml_core::ir::ir_helpers::{infer_type, infer_value_with_type};
 use internal_baml_jinja::RenderedPrompt;
 use jsonish::ResponseBamlValue;
@@ -85,8 +84,8 @@ pub trait Visualize {
     fn visualize(&self, max_chunk_size: impl Into<baml_log::MaxMessageLength> + Clone) -> String;
 }
 
-fn log_str() -> ColoredString {
-    "...[log trimmed]...".yellow().dimmed()
+fn log_str() -> String {
+    format!("{}", crate::style::yellow_dimmed("...[log trimmed]..."))
 }
 
 pub fn truncate_string(
@@ -146,7 +145,10 @@ impl Visualize for FunctionResult {
         if self.event_chain().len() > 1 {
             s.push(format!(
                 "{}",
-                format!("({} other previous tries)", self.event_chain().len() - 1).yellow()
+                crate::style::yellow(format!(
+                    "({} other previous tries)",
+                    self.event_chain().len() - 1
+                ))
             ));
         }
         s.push(self.llm_response().visualize(max_chunk_size));
@@ -156,7 +158,7 @@ impl Visualize for FunctionResult {
                 if matches!(self.llm_response(), LLMResponse::Success(_)) {
                     s.push(format!(
                         "{}",
-                        format!("---Parsed Response ({})---", val.0.r#type()).blue()
+                        crate::style::blue(format!("---Parsed Response ({})---", val.0.r#type()))
                     ));
                     let json_str = serde_json::to_string_pretty(&val.serialize_final()).unwrap();
 
@@ -227,7 +229,10 @@ struct BamlEventLoggable<'a> {
 
 impl baml_log::Loggable for BamlEventLoggable<'_> {
     fn as_baml_log_string(&self, max_message_length: &baml_log::MaxMessageLength) -> String {
-        let function_name = format!("Function {}", self.function_name).purple();
+        let function_name = format!(
+            "{}",
+            crate::style::purple(format!("Function {}", self.function_name))
+        );
         match self.data.as_ref() {
             Ok(response) => {
                 let response = response.visualize(*max_message_length);
@@ -650,17 +655,23 @@ impl BamlTracer {
             if is_ok {
                 baml_log::info!(
                     "{}{}",
-                    name.map(|s| format!("Function {s}:\n"))
-                        .unwrap_or_default()
-                        .purple(),
+                    format!(
+                        "{}",
+                        crate::style::purple(
+                            name.map(|s| format!("Function {s}:\n")).unwrap_or_default()
+                        )
+                    ),
                     response.visualize(self.options.config.max_log_chunk_chars())
                 );
             } else {
                 baml_log::warn!(
                     "{}{}",
-                    name.map(|s| format!("Function {s}:\n"))
-                        .unwrap_or_default()
-                        .purple(),
+                    format!(
+                        "{}",
+                        crate::style::purple(
+                            name.map(|s| format!("Function {s}:\n")).unwrap_or_default()
+                        )
+                    ),
                     response.visualize(self.options.config.max_log_chunk_chars())
                 );
             }
@@ -776,17 +787,19 @@ fn log_simple_event(
     if is_ok {
         baml_log::info!(
             "{}{}",
-            name.map(|s| format!("Function {s}:\n"))
-                .unwrap_or_default()
-                .purple(),
+            format!(
+                "{}",
+                crate::style::purple(name.map(|s| format!("Function {s}:\n")).unwrap_or_default())
+            ),
             response.visualize(options.config.max_log_chunk_chars())
         );
     } else {
         baml_log::warn!(
             "{}{}",
-            name.map(|s| format!("Function {s}:\n"))
-                .unwrap_or_default()
-                .purple(),
+            format!(
+                "{}",
+                crate::style::purple(name.map(|s| format!("Function {s}:\n")).unwrap_or_default())
+            ),
             response.visualize(options.config.max_log_chunk_chars())
         );
     }

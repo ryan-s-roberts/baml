@@ -14,6 +14,7 @@ use internal_baml_diagnostics::{DatamodelError, Diagnostics, SourceFile, Span};
 use internal_baml_parser_database::TypeWalker;
 pub use internal_baml_parser_database::{self};
 use ir::repr::WithRepr;
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 mod common;
@@ -55,20 +56,22 @@ pub fn validate(
     {
         let diagnostics = Mutex::new(&mut diagnostics);
         let db = Mutex::new(&mut db);
-        files
-            .par_iter()
-            .for_each(|file| match internal_baml_ast::parse(root_path, file) {
-                Ok((ast, err)) => {
-                    let mut diagnostics = diagnostics.lock().unwrap();
-                    let mut db = db.lock().unwrap();
-                    diagnostics.push(err);
-                    db.add_ast(ast);
-                }
-                Err(err) => {
-                    let mut diagnostics = diagnostics.lock().unwrap();
-                    diagnostics.push(err);
-                }
-            });
+        #[cfg(feature = "rayon")]
+        let file_iter = files.par_iter();
+        #[cfg(not(feature = "rayon"))]
+        let file_iter = files.iter();
+        file_iter.for_each(|file| match internal_baml_ast::parse(root_path, file) {
+            Ok((ast, err)) => {
+                let mut diagnostics = diagnostics.lock().unwrap();
+                let mut db = db.lock().unwrap();
+                diagnostics.push(err);
+                db.add_ast(ast);
+            }
+            Err(err) => {
+                let mut diagnostics = diagnostics.lock().unwrap();
+                diagnostics.push(err);
+            }
+        });
     }
 
     if let Err(d) = db.validate(&mut diagnostics) {
