@@ -44,16 +44,16 @@ cowstr.workspace = true
 dashmap.workspace = true
 derive-new.workspace = true
 derive_more.workspace = true
-dunce = "1.0.4"
+dunce.workspace = true
 either.workspace = true
-eventsource-stream = "0.2.3"
+eventsource-stream.workspace = true
 futures.workspace = true
 http.workspace = true
 http-body.workspace = true
 indexmap.workspace = true
 indoc.workspace = true
 # instant = "0.1"  # do not use this or wasm-timer - use web-time instead
-json_comments = "0.2.2"
+json_comments.workspace = true
 jsonish.workspace = true
 internal-llm-client.workspace = true
 internal-baml-core.workspace = true
@@ -62,9 +62,9 @@ log.workspace = true
 minijinja = { workspace = true, optional = true }
 pin-project-lite.workspace = true
 pretty = { workspace = true, optional = true }
-percent-encoding = "2.3.1"
+percent-encoding.workspace = true
 regex.workspace = true
-reqwest-eventsource = "0.6.0"
+reqwest-eventsource.workspace = true
 scopeguard.workspace = true
 secrecy.workspace = true
 serde.workspace = true
@@ -73,30 +73,30 @@ strsim.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
 thiserror.workspace = true
-tokio = { version = "1", default-features = false, features = [
+tokio = { workspace = true, default-features = false, features = [
   "macros",
   "time",
 ] }
-tokio-stream = "0.1.15"
+tokio-stream.workspace = true
 # NOTE(sam): adding this caused a build error, I suspect because tower uses nightly features or something
 # tower = "0.5.0"
 uuid.workspace = true
 web-time.workspace = true
 static_assertions.workspace = true
-mime_guess = "=2.0.5"
-mime = "0.3.17"
+mime_guess.workspace = true
+mime.workspace = true
 
 # For tracing
-envy = "0.4.2"
-chrono = "0.4.38"
-stream-cancel = "0.8.2"
-async-std = "1.12.0"
-fastrand = "2.1.0"
-test-log = "0.2.16"
-include_dir = "0.7.3"
-infer = "0.16.0"
-url = "2.5.2"
-shell-escape = "0.1.5"
+envy.workspace = true
+chrono.workspace = true
+stream-cancel.workspace = true
+async-std.workspace = true
+fastrand.workspace = true
+test-log.workspace = true
+include_dir.workspace = true
+infer.workspace = true
+url.workspace = true
+shell-escape.workspace = true
 aws-sigv4 = "1.2.2"
 aws-credential-types = "1.2.1"
 aws-runtime = "1.5.5"
@@ -104,26 +104,22 @@ aws-smithy-async = "1.2.1"
 aws-smithy-runtime-api = "1.7.0"
 aws-smithy-types = "1.2.0"
 aws-smithy-runtime = "1.6.0"
-enum_dispatch = "0.3.13"
+enum_dispatch.workspace = true
 aws-smithy-json = "0.60.7"
-pretty_assertions = "1.4.0"
-valuable = { version = "0.1.0", features = ["derive"] }
-tracing = { version = "0.1.40", features = ["valuable"] }
-tracing-log = "0.2.0"
-tracing-core = { version = "0.1.31" }
-tracing-subscriber = { version = "0.3.18", features = [
-  "json",
-  "env-filter",
-  "valuable",
-] }
-log-once = "0.4.1"
+pretty_assertions.workspace = true
+valuable.workspace = true
+tracing.workspace = true
+tracing-log.workspace = true
+tracing-core.workspace = true
+tracing-subscriber.workspace = true
+log-once.workspace = true
 once_cell.workspace = true
 time.workspace = true
-tempfile = "3.19.0"
-sha2 = "0.10.9"
-blake3 = "1.8.2"
-flate2 = "1.1.5"
-similar = "2.6"
+tempfile.workspace = true
+sha2.workspace = true
+blake3.workspace = true
+flate2.workspace = true
+similar.workspace = true
 
 [dependencies.clap]
 workspace = true
@@ -206,17 +202,17 @@ tokio = { version = "1", default-features = false, features = [
 ] }
 reqwest.workspace = true
 # CLI / codegen / dev-only (optional; omit with default-features = false, features = ["minimal-runtime"])
-axum = { version = "0.7.5", optional = true }
-axum-extra = { version = "0.9.3", features = ["erased-json", "typed-header"], optional = true }
-criterion = { version = "0.5.1", optional = true }
-notify-debouncer-full = { version = "0.3.1", optional = true }
-walkdir = { version = "2.5.0", optional = true }
-which = { version = "6.0.3", optional = true }
+axum = { workspace = true, optional = true }
+axum-extra = { version = "0.9", features = ["erased-json", "typed-header"], optional = true }
+criterion = { workspace = true, optional = true }
+notify-debouncer-full = { version = "0.3", optional = true }
+walkdir = { workspace = true, optional = true }
+which = { version = "6", optional = true }
 indicatif = { version = "0.17", optional = true }
-junit-report = { version = "0.8.3", optional = true }
+junit-report = { version = "0.8", optional = true }
 ratatui = { version = "0.29", optional = true }
 unicode-width = { version = "0.1", optional = true }
-dirs = { version = "5.0", optional = true }
+dirs = { version = "5", optional = true }
 supports-color = { version = "3", optional = true }
 crossterm = { version = "0.28", optional = true }
 reedline = { version = "0.37", optional = true }

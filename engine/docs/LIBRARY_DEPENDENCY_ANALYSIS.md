@@ -96,10 +96,10 @@ So the “minimal library” use case is: **CFFI / Python / TS / Ruby clients an
 
 ## 4. Semver and version strategy
 
-- **Workspace `[workspace.dependencies]`**: Prefer **caret** for minor/patch compatibility, e.g.  
-  `serde = "1"`, `serde_json = "1"`, `time = "0.3"`, `uuid = "1"`, `tokio = "1"`, `anyhow = "1"`, `thiserror = "2"`.  
-  This keeps the tree flexible for library consumers.
-- **Pinned deps**: Keep exact pins only where necessary (e.g. AWS SDK, wasm-bindgen, or deps with known breakage). Document the reason (e.g. in Cargo.toml or this doc).
+- **Workspace `[workspace.dependencies]`**: Use **range** versions for flexibility, e.g.  
+  `chrono = "0.4"`, `async-std = "1"`, `fastrand = "2"`, `serde = "1"`, `tokio = "1"`, `anyhow = "1"`.  
+  Inline pins from baml-runtime and internal-baml-core are moved into the workspace and expressed as ranges (`"1"`, `"0.4"`, `"0.2"`, etc.).
+- **Exact pins**: Kept only where necessary (e.g. **wasm**: `js-sys`, `wasm-bindgen`, `web-sys`; **AWS SDK**: `aws-config`, `aws-sdk-bedrockruntime`, and related smithy deps in baml-runtime for crypto/toolchain compatibility). See comments in baml-runtime `Cargo.toml` for AWS pin rationale.
 - **Internal crates**: baml-ids, baml-rpc, internal-baml-* are path dependencies; when/if published, use proper semver and re-export from a single “baml” or “baml-core” facade if desired.
 
 ---

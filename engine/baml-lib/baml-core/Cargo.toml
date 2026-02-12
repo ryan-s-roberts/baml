@@ -36,12 +36,12 @@ internal-baml-parser-database = { path = "../parser-database" }
 internal-baml-prompt-parser = { path = "../prompt-parser" }
 baml-rpc.workspace = true
 minijinja.workspace = true
-rayon = { version = "1.8.0", optional = true }
+rayon = { workspace = true, optional = true }
 regex.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-shellwords = "1.1.0"
+shellwords.workspace = true
 strsim.workspace = true
 strum.workspace = true
 textwrap.workspace = true
