@@ -224,22 +224,6 @@ impl Object for MinijinjaBamlEnumValue {
         std::fmt::Display::fmt(self, f)
     }
 
-    fn value_cmp(self: &Arc<Self>, other: &minijinja::Value) -> Option<std::cmp::Ordering> {
-        // Compare to strings - compare against value name only, NOT alias
-        // This is critical to preserving backwards compatibility with enum value handling
-        // pre-0.206.0, where enum values were simply modelled as `string` in minijinja.
-        if let Some(other_str) = other.as_str() {
-            return Some(self.value.as_str().cmp(other_str));
-        }
-
-        // Delegate to custom_cmp for object comparisons
-        if let Some(other_obj) = other.as_object() {
-            return self.custom_cmp(other_obj);
-        }
-
-        None
-    }
-
     fn custom_cmp(
         self: &Arc<Self>,
         other: &minijinja::value::DynObject,
