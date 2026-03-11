@@ -15,9 +15,9 @@ package baml_client
 
 import (
 	"context"
-	"fmt"
 
 	baml "github.com/boundaryml/baml/engine/language_client_go/pkg"
+	"nested_structures/baml_client/types"
 )
 
 type build_request struct{}

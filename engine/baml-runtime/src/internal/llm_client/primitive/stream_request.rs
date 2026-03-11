@@ -11,6 +11,8 @@ use internal_baml_jinja::RenderedChatMessage;
 use reqwest::Response;
 use serde::de::DeserializeOwned;
 
+#[cfg(feature = "gcp")]
+use super::vertex::response_handler::scan_vertex_response_stream;
 use super::{
     anthropic::response_handler::scan_anthropic_response_stream,
     google::response_handler::scan_google_response_stream,
@@ -19,7 +21,6 @@ use super::{
         build_and_log_outbound_request, execute_request, to_prompt, EitherResponse, RequestBuilder,
         ResponseType,
     },
-    vertex::response_handler::scan_vertex_response_stream,
 };
 use crate::{
     internal::llm_client::{
@@ -253,6 +254,7 @@ pub async fn make_stream_request(
                             accumulated,
                             event_body,
                         ),
+                        #[cfg(feature = "gcp")]
                         ResponseType::Vertex => scan_vertex_response_stream(
                             &client_name,
                             &params,
@@ -263,6 +265,8 @@ pub async fn make_stream_request(
                             accumulated,
                             event_body,
                         ),
+                        #[cfg(not(feature = "gcp"))]
+                        ResponseType::Vertex => unreachable!("Vertex AI support not enabled"),
                     };
                     if let Err(e) = update {
                         std::future::ready(Some(LLMResponse::LLMFailure(e)))

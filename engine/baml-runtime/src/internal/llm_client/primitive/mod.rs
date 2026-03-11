@@ -6,10 +6,14 @@ use internal_baml_core::ir::{repr::IntermediateRepr, ClientWalker};
 use internal_baml_jinja::RenderedChatMessage;
 use internal_llm_client::{AllowedRoleMetadata, ClientProvider, OpenAIClientProviderVariant};
 
+#[cfg(feature = "aws")]
+use self::aws::AwsClient;
 pub(crate) use self::request::{json_body, json_headers, JsonBodyInput};
+#[cfg(feature = "gcp")]
+use self::vertex::VertexClient;
 use self::{
-    anthropic::AnthropicClient, aws::AwsClient, google::GoogleAIClient, openai::OpenAIClient,
-    request::RequestBuilder, vertex::VertexClient,
+    anthropic::AnthropicClient, google::GoogleAIClient, openai::OpenAIClient,
+    request::RequestBuilder,
 };
 use super::{
     orchestrator::{
@@ -28,11 +32,13 @@ use crate::{
 };
 
 mod anthropic;
+#[cfg(feature = "aws")]
 mod aws;
 mod google;
 mod openai;
 pub(super) mod request;
 mod stream_request;
+#[cfg(feature = "gcp")]
 mod vertex;
 
 use enum_dispatch::enum_dispatch;
@@ -42,29 +48,32 @@ pub enum LLMPrimitive2 {
     OpenAIClient,
     AnthropicClient,
     GoogleAIClient,
+    #[cfg(feature = "gcp")]
     VertexClient,
+    #[cfg(feature = "aws")]
     AwsClient,
 }
 
-// #[derive(Delegate)]
-// #[delegate(WithRetryPolicy, WithRenderRawCurl)]
 #[derive(derive_more::From)]
 pub enum LLMPrimitiveProvider {
     OpenAI(OpenAIClient),
     Anthropic(AnthropicClient),
     Google(GoogleAIClient),
+    #[cfg(feature = "gcp")]
     Vertex(VertexClient),
+    #[cfg(feature = "aws")]
     Aws(aws::AwsClient),
 }
 
 macro_rules! match_llm_provider {
-    // Define the variants inside the macro
     ($self:expr, $method:ident, async $(, $args:tt)*) => {
         match $self {
             LLMPrimitiveProvider::OpenAI(client) => client.$method($($args),*).await,
             LLMPrimitiveProvider::Anthropic(client) => client.$method($($args),*).await,
             LLMPrimitiveProvider::Google(client) => client.$method($($args),*).await,
+            #[cfg(feature = "aws")]
             LLMPrimitiveProvider::Aws(client) => client.$method($($args),*).await,
+            #[cfg(feature = "gcp")]
             LLMPrimitiveProvider::Vertex(client) => client.$method($($args),*).await,
         }
     };
@@ -74,7 +83,9 @@ macro_rules! match_llm_provider {
             LLMPrimitiveProvider::OpenAI(client) => client.$method($($args),*),
             LLMPrimitiveProvider::Anthropic(client) => client.$method($($args),*),
             LLMPrimitiveProvider::Google(client) => client.$method($($args),*),
+            #[cfg(feature = "aws")]
             LLMPrimitiveProvider::Aws(client) => client.$method($($args),*),
+            #[cfg(feature = "gcp")]
             LLMPrimitiveProvider::Vertex(client) => client.$method($($args),*),
         }
     };
@@ -132,38 +143,24 @@ impl TryFrom<(&ClientProperty, &RuntimeContext)> for LLMPrimitiveProvider {
                 }
             }
             ClientProvider::Anthropic => AnthropicClient::dynamic_new(value, ctx).map(Into::into),
+            #[cfg(feature = "aws")]
             ClientProvider::AwsBedrock => AwsClient::dynamic_new(value, ctx).map(Into::into),
+            #[cfg(not(feature = "aws"))]
+            ClientProvider::AwsBedrock => {
+                anyhow::bail!("AWS Bedrock support not enabled. Rebuild with the 'aws' feature.")
+            }
             ClientProvider::GoogleAi => GoogleAIClient::dynamic_new(value, ctx).map(Into::into),
+            #[cfg(feature = "gcp")]
             ClientProvider::Vertex => VertexClient::dynamic_new(value, ctx).map(Into::into),
-            ClientProvider::Strategy(strategy_client_provider) => {
+            #[cfg(not(feature = "gcp"))]
+            ClientProvider::Vertex => {
+                anyhow::bail!("Vertex AI support not enabled. Rebuild with the 'gcp' feature.")
+            }
+            ClientProvider::Strategy(_) => {
                 unimplemented!(
                     "Strategy client providers are not supported yet in LLMPrimitiveProvider"
                 )
-            } // "openai" => OpenAIClient::dynamic_new(value, ctx).map(Into::into),
-              // "openai-generic" => OpenAIClient::dynamic_new_generic(value, ctx).map(Into::into),
-              // "azure-openai" => OpenAIClient::dynamic_new_azure(value, ctx).map(Into::into),
-              // "ollama" => OpenAIClient::dynamic_new_ollama(value, ctx).map(Into::into),
-              // "anthropic" => AnthropicClient::dynamic_new(value, ctx).map(Into::into),
-              // "google-ai" => GoogleAIClient::dynamic_new(value, ctx).map(Into::into),
-              // "vertex-ai" => VertexClient::dynamic_new(value, ctx).map(Into::into),
-              // // dynamic_new is not implemented for aws::AwsClient
-              // other => {
-              //     let options = [
-              //         "anthropic",
-              //         "azure-openai",
-              //         "google-ai",
-              //         "openai",
-              //         "openai-generic",
-              //         "vertex-ai",
-              //         "fallback",
-              //         "round-robin",
-              //     ];
-              //     anyhow::bail!(
-              //         "Unsupported provider: {}. Available ones are: {}",
-              //         other,
-              //         options.join(", ")
-              //     )
-              // }
+            }
         }
     }
 }
@@ -196,10 +193,20 @@ impl TryFrom<(&ClientWalker<'_>, &RuntimeContext)> for LLMPrimitiveProvider {
                 }
             }
             ClientProvider::Anthropic => AnthropicClient::new(client, ctx).map(Into::into),
+            #[cfg(feature = "aws")]
             ClientProvider::AwsBedrock => AwsClient::new(client, ctx).map(Into::into),
+            #[cfg(not(feature = "aws"))]
+            ClientProvider::AwsBedrock => {
+                anyhow::bail!("AWS Bedrock support not enabled. Rebuild with the 'aws' feature.")
+            }
             ClientProvider::GoogleAi => GoogleAIClient::new(client, ctx).map(Into::into),
+            #[cfg(feature = "gcp")]
             ClientProvider::Vertex => VertexClient::new(client, ctx).map(Into::into),
-            ClientProvider::Strategy(strategy_client_provider) => {
+            #[cfg(not(feature = "gcp"))]
+            ClientProvider::Vertex => {
+                anyhow::bail!("Vertex AI support not enabled. Rebuild with the 'gcp' feature.")
+            }
+            ClientProvider::Strategy(_) => {
                 unimplemented!(
                     "Strategy client providers are not supported yet in LLMPrimitiveProvider"
                 )
@@ -219,8 +226,10 @@ impl LLMPrimitiveProvider {
             LLMPrimitiveProvider::OpenAI(client) => client.chat_to_message(chat),
             LLMPrimitiveProvider::Anthropic(client) => client.chat_to_message(chat),
             LLMPrimitiveProvider::Google(client) => client.chat_to_message(chat),
+            #[cfg(feature = "gcp")]
             LLMPrimitiveProvider::Vertex(client) => client.chat_to_message(chat),
-            LLMPrimitiveProvider::Aws(client) => {
+            #[cfg(feature = "aws")]
+            LLMPrimitiveProvider::Aws(_) => {
                 anyhow::bail!("Prompt exposure for AWS client is not supported")
             }
         }
@@ -234,8 +243,10 @@ impl LLMPrimitiveProvider {
             LLMPrimitiveProvider::OpenAI(client) => client.completion_to_provider_body(prompt),
             LLMPrimitiveProvider::Anthropic(client) => client.completion_to_provider_body(prompt),
             LLMPrimitiveProvider::Google(client) => client.completion_to_provider_body(prompt),
+            #[cfg(feature = "gcp")]
             LLMPrimitiveProvider::Vertex(client) => client.completion_to_provider_body(prompt),
-            LLMPrimitiveProvider::Aws(client) => {
+            #[cfg(feature = "aws")]
+            LLMPrimitiveProvider::Aws(_) => {
                 anyhow::bail!("Prompt exposure for AWS client is not supported")
             }
         })
@@ -263,12 +274,14 @@ impl LLMPrimitiveProvider {
                     .build_request(prompt, allow_proxy, stream, true)
                     .await
             }
+            #[cfg(feature = "gcp")]
             LLMPrimitiveProvider::Vertex(client) => {
                 client
                     .build_request(prompt, allow_proxy, stream, true)
                     .await
             }
-            LLMPrimitiveProvider::Aws(client) => {
+            #[cfg(feature = "aws")]
+            LLMPrimitiveProvider::Aws(_) => {
                 anyhow::bail!("Prompt exposure for AWS client is not supported")
             }
         }
@@ -339,7 +352,9 @@ impl std::fmt::Display for LLMPrimitiveProvider {
             LLMPrimitiveProvider::OpenAI(_) => write!(f, "OpenAI"),
             LLMPrimitiveProvider::Anthropic(_) => write!(f, "Anthropic"),
             LLMPrimitiveProvider::Google(_) => write!(f, "Google"),
+            #[cfg(feature = "aws")]
             LLMPrimitiveProvider::Aws(_) => write!(f, "AWS"),
+            #[cfg(feature = "gcp")]
             LLMPrimitiveProvider::Vertex(_) => write!(f, "Vertex"),
         }
     }
@@ -363,7 +378,9 @@ impl LLMPrimitiveProvider {
             LLMPrimitiveProvider::OpenAI(client) => client.http_config(),
             LLMPrimitiveProvider::Anthropic(client) => client.http_config(),
             LLMPrimitiveProvider::Google(client) => client.http_config(),
+            #[cfg(feature = "gcp")]
             LLMPrimitiveProvider::Vertex(client) => client.http_config(),
+            #[cfg(feature = "aws")]
             LLMPrimitiveProvider::Aws(client) => client.http_config(),
         }
     }

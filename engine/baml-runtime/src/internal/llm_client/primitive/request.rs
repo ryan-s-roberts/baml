@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{Context, Result};
-use aws_smithy_runtime_api::client::orchestrator::HttpRequest;
 use baml_types::{
     tracing::events::{ClientDetails, HTTPBody, HTTPRequest, HTTPResponse, TraceEvent},
     BamlMap,
@@ -509,6 +508,7 @@ pub async fn make_parsed_request(
             instant_now,
             model_name,
         ),
+        #[cfg(feature = "gcp")]
         ResponseType::Vertex => super::vertex::response_handler::parse_vertex_response(
             client,
             prompt,
@@ -517,6 +517,8 @@ pub async fn make_parsed_request(
             instant_now,
             model_name,
         ),
+        #[cfg(not(feature = "gcp"))]
+        ResponseType::Vertex => unreachable!("Vertex AI support not enabled"),
         ResponseType::OpenAIResponses => {
             super::openai::response_handler::parse_openai_responses_response(
                 client,

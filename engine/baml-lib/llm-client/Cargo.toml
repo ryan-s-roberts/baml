@@ -35,7 +35,5 @@ secrecy.workspace = true
 env_logger = "0.11.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-aws-config = { version = "1.5.3", default-features = false, features = [] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-aws-config = "1.5.3"

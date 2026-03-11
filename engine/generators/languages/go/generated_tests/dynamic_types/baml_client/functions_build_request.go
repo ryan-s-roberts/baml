@@ -15,8 +15,8 @@ package baml_client
 
 import (
 	"context"
-	"fmt"
 
+	"dynamic_types/baml_client/types"
 	baml "github.com/boundaryml/baml/engine/language_client_go/pkg"
 )
 

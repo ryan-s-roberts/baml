@@ -97,15 +97,15 @@ include_dir.workspace = true
 infer.workspace = true
 url.workspace = true
 shell-escape.workspace = true
-aws-sigv4 = "1.2.2"
-aws-credential-types = "1.2.1"
-aws-runtime = "1.5.5"
-aws-smithy-async = "1.2.1"
-aws-smithy-runtime-api = "1.7.0"
-aws-smithy-types = "1.2.0"
-aws-smithy-runtime = "1.6.0"
+aws-sigv4 = { version = "1.2.2", optional = true }
+aws-credential-types = { version = "1.2.1", optional = true }
+aws-runtime = { version = "1.5.5", optional = true }
+aws-smithy-async = { version = "1.2.1", optional = true }
+aws-smithy-runtime-api = { version = "1.7.0", optional = true }
+aws-smithy-types = { version = "1.2.0", optional = true }
+aws-smithy-runtime = { version = "1.6.0", optional = true }
 enum_dispatch.workspace = true
-aws-smithy-json = "0.60.7"
+aws-smithy-json = { version = "0.60.7", optional = true }
 pretty_assertions.workspace = true
 valuable.workspace = true
 tracing.workspace = true
@@ -139,15 +139,8 @@ optional = true
 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-aws-config = { version = "=1.5.3", default-features = false, features = [] }
-# You will run into some crypto/install issues with vertex tests if you move further than this due to https://github.com/awslabs/aws-sdk-rust/releases/tag/release-2025-03-11 . The new version uses aws_lc_rs instead of ring.
-# but depending on ring and aws_lc_rs leads to issues.
-# https://github.com/rustls/rustls/issues/1877
-# https://github.com/awslabs/aws-sdk-rust/issues/1263
-# same goes for aws-config.
-# Potential migration https://docs.aws.amazon.com/sdk-for-rust/latest/dg/http.html#tlsProviders
-aws-sdk-bedrockruntime = { version = "=1.106.0", default-features = false, features = [
-] }
+aws-config = { version = "=1.5.3", default-features = false, features = [], optional = true }
+aws-sdk-bedrockruntime = { version = "=1.106.0", default-features = false, features = [], optional = true }
 colored = { version = "2.1.0", default-features = false, features = [
   "no-color",
 ] }
@@ -173,20 +166,13 @@ tokio = { version = "1", features = ["rt", "sync"] }
 
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-aws-config = "=1.5.3"
-# You will run into some crypto/install issues with vertex tests if you move further than this due to https://github.com/awslabs/aws-sdk-rust/releases/tag/release-2025-03-11 . The new version uses aws_lc_rs instead of ring.
-# but depending on ring and aws_lc_rs leads to issues.
-# https://github.com/rustls/rustls/issues/1877
-# https://github.com/awslabs/aws-sdk-rust/issues/1263
-# same goes for aws-config.
-# Potential migration https://docs.aws.amazon.com/sdk-for-rust/latest/dg/http.html#tlsProviders
-aws-sdk-bedrockruntime = { version = "=1.106.0", default-features = false, features = [
-] }
-# Required for native LLM/runtime (TLS, auth, etc.)
-gcp_auth = "0.12.3"
+aws-config = { version = "=1.5.3", optional = true }
+aws-sdk-bedrockruntime = { version = "=1.106.0", default-features = false, features = [], optional = true }
+# Required for native GCP/Vertex auth (TLS, JWT, etc.)
+gcp_auth = { version = "0.12.3", optional = true }
 hostname = "0.3.1"
-jsonwebtoken = { version = "9.3.0" }
-ring = { version = "0.17.4", features = ["std"] }
+jsonwebtoken = { version = "9.3.0", optional = true }
+ring = { version = "0.17.4", features = ["std"], optional = true }
 # Tokio: minimal set for runtime (no "full"). CLI/test_executor need signal; fs/process only used by CLI.
 # When building with minimal-runtime only, this keeps tokio smaller than "full".
 tokio = { version = "1", default-features = false, features = [
@@ -219,7 +205,7 @@ reedline = { version = "0.37", optional = true }
 
 
 [features]
-default = ["skip-integ-tests", "codegen", "cli", "colored", "pretty"]
+default = ["skip-integ-tests", "codegen", "cli", "colored", "pretty", "aws", "gcp"]
 defaults = ["skip-integ-tests"]
 internal = []
 skip-integ-tests = []
@@ -229,8 +215,28 @@ colored = ["dep:colored"]
 pretty = ["dep:pretty"]
 # Use the THIR interpreter runtime instead of the VM bytecode runtime
 thir-interpreter = []
-# Minimal library surface: no CLI, no codegen. Use: default-features = false, features = ["minimal-runtime"]
+# Minimal library surface: no CLI, no codegen, no cloud providers.
+# Use: default-features = false, features = ["minimal-runtime"]
 minimal-runtime = []
+# AWS Bedrock provider support. Pulls in aws-sdk-bedrockruntime, aws-sigv4, aws-smithy-*, etc.
+aws = [
+  "dep:aws-sigv4",
+  "dep:aws-credential-types",
+  "dep:aws-runtime",
+  "dep:aws-smithy-async",
+  "dep:aws-smithy-runtime-api",
+  "dep:aws-smithy-types",
+  "dep:aws-smithy-runtime",
+  "dep:aws-smithy-json",
+  "dep:aws-config",
+  "dep:aws-sdk-bedrockruntime",
+]
+# GCP Vertex AI provider support. Pulls in gcp_auth, jsonwebtoken, ring.
+gcp = [
+  "dep:gcp_auth",
+  "dep:jsonwebtoken",
+  "dep:ring",
+]
 # Codegen (generate_sdk, run_codegen). Enabled by default; off when using minimal-runtime.
 codegen = ["dep:generators-lib", "dep:generators-openapi"]
 # CLI (baml-cli, serve, repl, etc.). Enabled by default; off when using minimal-runtime.

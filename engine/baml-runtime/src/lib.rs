@@ -1544,6 +1544,7 @@ impl BamlRuntime {
 
         let mut request_id = HttpRequestId::new();
 
+        #[cfg(feature = "aws")]
         if let RenderedPrompt::Chat(chat) = &prompt {
             if let LLMProvider::Primitive(primitive) = provider.as_ref() {
                 if let internal::llm_client::primitive::LLMPrimitiveProvider::Aws(aws_client) =
