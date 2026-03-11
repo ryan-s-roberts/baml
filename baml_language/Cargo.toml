@@ -1,5 +1,8 @@
 [workspace]
-members = [ "crates/*", "rig_tests/crates/*" ]
+members = [
+  "crates/*",
+  "rig_tests/crates/*",
+]
 resolver = "2"
 
 [workspace.package]
@@ -13,32 +16,42 @@ documentation = "https://docs.boundaryml.com"
 repository = "https://github.com/BoundaryML/baml"
 license = "Apache-2.0"
 # This needs to be updated manually when bumping the version
-version = "0.0.0"
+version = "0.0.0-beta"
 
 [workspace.dependencies]
 #  Internal dependencies (baml_*)
 baml_base = { path = "crates/baml_base" }
 baml_type = { path = "crates/baml_type" }
 baml_builtins = { path = "crates/baml_builtins" }
+baml_builtins2 = { path = "crates/baml_builtins2" }
 baml_builtins_macros = { path = "crates/baml_builtins_macros" }
 baml_codegen_python = { path = "crates/baml_codegen_python" }
 baml_codegen_tests = { path = "crates/baml_codegen_tests" }
 baml_codegen_types = { path = "crates/baml_codegen_types" }
+baml_compiler_analysis = { path = "crates/baml_compiler_analysis" }
+baml_compiler2_ast = { path = "crates/baml_compiler2_ast" }
+baml_compiler2_hir = { path = "crates/baml_compiler2_hir" }
+baml_compiler2_tir = { path = "crates/baml_compiler2_tir" }
+baml_compiler2_visualization = { path = "crates/baml_compiler2_visualization" }
 baml_compiler_diagnostics = { path = "crates/baml_compiler_diagnostics" }
 baml_compiler_emit = { path = "crates/baml_compiler_emit" }
 baml_compiler_hir = { path = "crates/baml_compiler_hir" }
 baml_compiler_lexer = { path = "crates/baml_compiler_lexer" }
 baml_compiler_mir = { path = "crates/baml_compiler_mir" }
 baml_compiler_parser = { path = "crates/baml_compiler_parser" }
+baml_compiler_ppir = { path = "crates/baml_compiler_ppir" }
 baml_compiler_syntax = { path = "crates/baml_compiler_syntax" }
 baml_compiler_tir = { path = "crates/baml_compiler_tir" }
 baml_compiler_vir = { path = "crates/baml_compiler_vir" }
+bex_project = { path = "crates/bex_project" }
 bex_engine = { path = "crates/bex_engine" }
 sys_llm = { path = "crates/sys_llm" }
 sys_types = { path = "crates/sys_types" }
 sys_native = { path = "crates/sys_native" }
 baml_db = { path = "crates/baml_db" }
+baml_fmt = { path = "crates/baml_fmt" }
 baml_lsp_actions = { path = "crates/baml_lsp_actions" }
+baml_lsp2_actions = { path = "crates/baml_lsp2_actions" }
 baml_lsp_server = { path = "crates/baml_lsp_server" }
 baml_lsp_types = { path = "crates/baml_lsp_types" }
 baml_project = { path = "crates/baml_project" }
@@ -50,20 +63,22 @@ bex_external_types = { path = "crates/bex_external_types" }
 bex_heap = { path = "crates/bex_heap" }
 bridge_ctypes = { path = "crates/bridge_ctypes" }
 bridge_cffi = { path = "crates/bridge_cffi" }
+bridge_python = { path = "crates/bridge_python" }
 bridge_wasm = { path = "crates/bridge_wasm" }
+bex_events = { path = "crates/bex_events" }
+bex_events_native = { path = "crates/bex_events_native" }
 bex_resource_types = { path = "crates/bex_resource_types" }
-bex_factory = { path = "crates/bex_factory" }
 
 # External dependency for sys_llm jinja module
-minijinja = { git = "https://github.com/boundaryml/minijinja.git", branch = "main", default-features = false, features = [
+minijinja = { git = "https://github.com/boundaryml/minijinja.git", branch = "value-cmp", default-features = false, features = [
   "macros",
   "builtins",
   "debug",
   "preserve_order",
   "serde",
   "unstable_machinery",
-  "unstable_machinery_serde",
 ] }
+minijinja-contrib = { git = "https://github.com/boundaryml/minijinja.git", branch = "value-cmp", features = [ "pycompat" ] }
 baml_workspace = { path = "crates/baml_workspace" }
 
 #  External dependencies
@@ -83,24 +98,23 @@ crossbeam = { version = "0.8.4", features = [ "crossbeam-channel" ] }
 crossterm = "0.28"
 ctrlc = "3.4"
 divan = { package = "codspeed-divan-compat", version = "*" }
+flate2 = { version = "1" }
 futures = { version = "0.3.30", features = [ "executor" ] }
 graphviz-rust = { version = "0.9" }
 indexmap = { version = "2.1.0", features = [ "serde" ] }
 insta = { version = "1.34", features = [ "yaml", "redactions" ] }
-itertools = "0.14.0"
-jod-thread = { version = "0.1.2" }
 la-arena = { version = "0.3" }
 libc = "0.2.169"
 log = "0.4.20"
 logos = { version = "0.15" }
 lsp-server = "0.7.6"
 lsp-types = "0.95.0"
-memchr = { version = "2.7.1" }
-mime_guess = "2.0.5"
 notify = "7.0"
 once_cell = "1.19"
+ouroboros = "0.18.5"
 parking_lot = { version = "0.12", features = [ "deadlock_detection" ] }
 paste = "1.0"
+percent-encoding = "2.3"
 pretty_assertions = { version = "1.4" }
 prettyplease = { version = "0.2" }
 proc-macro2 = { version = "1" }
@@ -110,9 +124,9 @@ protoc-bin-vendored = "3"
 quote = { version = "1" }
 ratatui = "0.29"
 regex = { version = "1.10.2" }
-reqwest = { version = "0.13.1", features = [
+base64 = "0.22"
+reqwest = { version = "0.13.1", default-features = false, features = [
   "json",
-  "rustls",
   "stream",
 ] }
 rowan = { version = "0.16" }
@@ -125,9 +139,7 @@ salsa = { git = "https://github.com/salsa-rs/salsa.git", rev = "cdd0b85516a52c18
 ] }
 serde = { version = "1.0.197", features = [ "derive" ] }
 serde_json = { version = "1.0.113" }
-shellexpand = { version = "3.0.0" }
 similar = { version = "2.4.0", features = [ "inline" ] }
-simple-logging = "2.0.2"
 smol_str = { version = "0.3" }
 strsim = { version = "0.11.1" }
 syn = { version = "2", features = [ "full" ] }
@@ -138,6 +150,8 @@ thiserror = { version = "2.0.0" }
 toml = { version = "0.8" }
 toml_edit = { version = "0.22" }
 tokio = { version = "1.36" }
+tokio-tungstenite = { version = "0.28.0" }
+tokio-util = { version = "0.7" }
 tower-http = { version = "0.6.6", features = [ "fs", "cors" ] }
 tracing = { version = "0.1.40" }
 tracing-log = "0.2.0"
@@ -146,15 +160,24 @@ tracing-subscriber = { version = "0.3.18", default-features = false, features = 
   "fmt",
 ] }
 url = "2.5.2"
+uuid = { version = "1", features = [ "v4" ] }
 walkdir = { version = "2.4" }
+tsify = { version = "0.5", features = [ "js" ] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen-test = "0.3"
 js-sys = "0.3"
 webbrowser = "1.0.5"
 strum = { version = "0.26", features = [ "derive" ] }
+pyo3 = { version = "0.23.3", default-features = false }
+pyo3-async-runtimes = { version = "0.23" }
+pyo3-build-config = "0.23"
 wee_alloc = "0.4"
 wiremock = "0.6"
+vfs = "0.12"
+wasm-logger = "0.2.0"
+web-time = "1.1.0"
+
 [workspace.lints.rust]
 unsafe_code = "warn"
 unreachable_pub = "warn"
@@ -167,6 +190,8 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 pedantic = { level = "warn", priority = -2 }
 # Enabled at the crate level
 disallowed_methods = "allow"
+# Used by clippy-wasm task (CLIPPY_CONF_DIR=clippy-wasm); config in clippy-wasm/clippy.toml
+disallowed_types = "warn"
 # Allowed pedantic lints
 char_lit_as_u8 = "allow"
 collapsible_else_if = "allow"
@@ -215,7 +240,10 @@ large_stack_arrays = "allow"
 
 [profile.release]
 lto = "fat"
-codegen-units = 16
+codegen-units = 1
+opt-level = "s"   # smallest; try "s" if perf matters
+strip = "symbols" # still keep your strip -x in packaging
+panic = "abort"
 
 # Some crates don't change as much but benefit more from
 # more expensive optimization passes, so we selectively
@@ -229,8 +257,9 @@ opt-level = 3
 [profile.dev.package.similar]
 opt-level = 3
 
+# Salsa dominates our compile times, so we disable it in dev mode.
 [profile.dev.package.salsa]
-opt-level = 3
+opt-level = 0
 
 # This profile is meant to mimic the `release` profile as closely as
 # possible, but using settings that are more beneficial for iterative

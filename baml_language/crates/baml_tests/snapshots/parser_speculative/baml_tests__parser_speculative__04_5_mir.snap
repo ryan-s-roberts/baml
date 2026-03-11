@@ -1,13 +1,12 @@
 ---
-source: target/debug/build/baml_tests-d8c3d4c38f908488/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 === MIR ===
 fn AnotherLLM(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "AnotherLLM"
     let _4: map<string, unknown>
     let _5: "input"
@@ -29,14 +28,125 @@ fn AnotherLLM(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn AnotherLLM.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "AnotherLLM"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "AnotherLLM";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Ambiguous.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Ambiguous"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Ambiguous";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn AnotherLLM.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "AnotherLLM"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "AnotherLLM";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Ambiguous.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Ambiguous"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Ambiguous";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Ambiguous(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Ambiguous"
     let _4: map<string, unknown>
     let _5: "input"
@@ -58,7 +168,6 @@ fn Ambiguous(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn ProcessData(data: JsonData) -> string {
@@ -70,7 +179,7 @@ fn ProcessData(data: JsonData) -> string {
     let _4: JsonData
     let _5: int
     let _6: JsonData
-    let _7: void
+    let _7: null
     let _8: bool
     let _9: int
     let _10: 100
@@ -115,14 +224,41 @@ fn ProcessData(data: JsonData) -> string {
     bb6: {
         return;
     }
+}
 
+fn ExtractData.render_prompt(text: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // text // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "ExtractData"
+    let _4: map<string, unknown>
+    let _5: "text"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "ExtractData";
+        _5 = const "text";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn ExtractData(text: string) -> JsonData {
     // Locals:
     let _0: JsonData // return
     let _1: string // text // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "ExtractData"
     let _4: map<string, unknown>
     let _5: "text"
@@ -144,7 +280,34 @@ fn ExtractData(text: string) -> JsonData {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn ExtractData.build_request(text: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // text // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "ExtractData"
+    let _4: map<string, unknown>
+    let _5: "text"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "ExtractData";
+        _5 = const "text";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn SimpleCalc(a: int, b: int) -> int {
@@ -174,7 +337,62 @@ fn SimpleCalc(a: int, b: int) -> int {
     bb2: {
         return;
     }
+}
 
+fn ChainedProcess.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "ChainedProcess"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "ChainedProcess";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn LLMAnalyze.render_prompt(text: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // text // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "LLMAnalyze"
+    let _4: map<string, unknown>
+    let _5: "text"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "LLMAnalyze";
+        _5 = const "text";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn ProcessAnalysis(analysis: Analysis) -> string {
@@ -295,14 +513,13 @@ fn ProcessAnalysis(analysis: Analysis) -> string {
     bb14: {
         return;
     }
-
 }
 
 fn LLMAnalyze(text: string) -> Analysis {
     // Locals:
     let _0: Analysis // return
     let _1: string // text // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "LLMAnalyze"
     let _4: map<string, unknown>
     let _5: "text"
@@ -324,14 +541,13 @@ fn LLMAnalyze(text: string) -> Analysis {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn ChainedProcess(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "ChainedProcess"
     let _4: map<string, unknown>
     let _5: "input"
@@ -353,5 +569,60 @@ fn ChainedProcess(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn LLMAnalyze.build_request(text: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // text // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "LLMAnalyze"
+    let _4: map<string, unknown>
+    let _5: "text"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "LLMAnalyze";
+        _5 = const "text";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn ChainedProcess.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "ChainedProcess"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "ChainedProcess";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }

@@ -71,7 +71,7 @@ impl<C: ErrorContext> TypeError<C> {
                 )
                 .with_primary_span(loc_fn(location));
                 if let Some(info_location) = info_location {
-                    diag.with_related(loc_fn(info_location), "Type defined here")
+                    diag.with_secondary(loc_fn(info_location), "Type required here")
                 } else {
                     diag
                 }
@@ -165,6 +165,11 @@ impl<C: ErrorContext> TypeError<C> {
                     .with_primary_span(loc_fn(location))
             }
 
+            TypeError::UnreachableCatchArm { location } => {
+                Diagnostic::warning(DiagnosticId::UnreachableCatchArm, "Unreachable catch arm")
+                    .with_primary_span(loc_fn(location))
+            }
+
             TypeError::UnknownEnumVariant {
                 enum_name,
                 variant_name,
@@ -197,6 +202,42 @@ impl<C: ErrorContext> TypeError<C> {
                 ),
             )
             .with_primary_span(loc_fn(location)),
+
+            TypeError::NonExhaustiveCatch {
+                unhandled_types,
+                location,
+            } => {
+                let unhandled = unhandled_types.join(", ");
+                Diagnostic::error(
+                    DiagnosticId::NonExhaustiveCatch,
+                    format!("Non-exhaustive catch chain: unhandled throw types {unhandled}"),
+                )
+                .with_primary_span(loc_fn(location))
+            }
+
+            TypeError::ThrowsContractViolation {
+                extra_types,
+                location,
+            } => {
+                let extras = extra_types.join(", ");
+                Diagnostic::error(
+                    DiagnosticId::ThrowsContractViolation,
+                    format!("Function throws types not covered by `throws` declaration: {extras}"),
+                )
+                .with_primary_span(loc_fn(location))
+            }
+
+            TypeError::ThrowsContractExtraneous {
+                unused_types,
+                location,
+            } => {
+                let unused = unused_types.join(", ");
+                Diagnostic::warning(
+                    DiagnosticId::ThrowsContractExtraneous,
+                    format!("`throws` declaration includes types the function never throws: {unused}"),
+                )
+                .with_primary_span(loc_fn(location))
+            }
 
             TypeError::InvalidMapKeyType { ty, location } => Diagnostic::error(
                 DiagnosticId::InvalidMapKeyType,
@@ -461,6 +502,21 @@ impl<C: ErrorContext> TypeError<C> {
                 Diagnostic::warning(DiagnosticId::JinjaInvalidTest, msg)
                     .with_primary_span(loc_fn(location))
             }
+
+            TypeError::InvalidCatchBindingType {
+                type_name,
+                location,
+            } => Diagnostic::error(
+                DiagnosticId::InvalidCatchBindingType,
+                format!("Type `{type_name}` is not allowed in catch bindings"),
+            )
+            .with_primary_span(loc_fn(location)),
+
+            TypeError::InstanceofRemoved { location } => Diagnostic::error(
+                DiagnosticId::InstanceofRemoved,
+                "`instanceof` is no longer supported. Use a `match` expression for type checking instead.".to_string(),
+            )
+            .with_primary_span(loc_fn(location)),
         };
         diag.with_phase(DiagnosticPhase::Type)
     }
@@ -538,6 +594,29 @@ impl ToDiagnostic for HirDiagnostic {
             )
             .with_primary(*second_span, "duplicate definition")
             .with_secondary(*first_span, "first definition here"),
+
+            HirDiagnostic::DuplicateMethod {
+                class_name,
+                method_name,
+                first_span,
+                second_span,
+            } => Diagnostic::error(
+                DiagnosticId::DuplicateMethod,
+                format!("Duplicate method `{method_name}` in class `{class_name}`"),
+            )
+            .with_primary(*second_span, "duplicate definition")
+            .with_secondary(*first_span, "first definition here"),
+
+            HirDiagnostic::DuplicateBinding {
+                name,
+                first_span,
+                second_span,
+            } => Diagnostic::error(
+                DiagnosticId::DuplicateBinding,
+                format!("Duplicate binding `{name}` in the same scope"),
+            )
+            .with_primary(*second_span, "duplicate binding")
+            .with_secondary(*first_span, "first binding here"),
 
             HirDiagnostic::DuplicateVariant {
                 enum_name,
@@ -840,6 +919,37 @@ impl ToDiagnostic for HirDiagnostic {
             )
             .with_primary_span(*span),
 
+            HirDiagnostic::EmptyStrategy {
+                client_name: _,
+                provider,
+                span,
+            } => Diagnostic::error(
+                DiagnosticId::EmptyStrategy,
+                format!(
+                    "{provider} client must have at least one sub-client in `strategy`"
+                ),
+            )
+            .with_primary_span(*span),
+
+            HirDiagnostic::UnknownRetryPolicy {
+                client_name: _,
+                policy_name,
+                span,
+            } => Diagnostic::error(
+                DiagnosticId::UnknownRetryPolicy,
+                format!("Unknown retry policy `{policy_name}`"),
+            )
+            .with_primary_span(*span),
+
+            HirDiagnostic::InvalidStrategyElement {
+                client_name: _,
+                span,
+            } => Diagnostic::warning(
+                DiagnosticId::InvalidStrategyElement,
+                "Strategy element must be a client name",
+            )
+            .with_primary_span(*span),
+
             HirDiagnostic::MissingSemicolon { span } => Diagnostic::error(
                 DiagnosticId::MissingSemicolon,
                 "Statement must end with a semicolon.",
@@ -980,6 +1090,19 @@ impl ToDiagnostic for HirDiagnostic {
                 format!("Syntax error in type builder block: {message}"),
             )
             .with_primary_span(*span),
+
+            HirDiagnostic::ReservedStreamPrefix {
+                item_kind,
+                item_name,
+                span,
+            } => Diagnostic::error(
+                DiagnosticId::ReservedStreamPrefix,
+                format!(
+                    "The `stream_` prefix is reserved for compiler-generated types. \
+                     Rename {item_kind} `{item_name}` to not start with `stream_`."
+                ),
+            )
+            .with_primary_span(*span),
         };
         diag.with_phase(DiagnosticPhase::Hir)
     }
@@ -1027,6 +1150,25 @@ mod tests {
         assert_eq!(diag.code(), "E0001");
         assert!(diag.message.contains("int"));
         assert!(diag.message.contains("string"));
+        assert_eq!(diag.phase, DiagnosticPhase::Type);
+    }
+
+    #[test]
+    fn test_type_error_with_info_location_to_diagnostic() {
+        let error: TypeError<SpanContext> = TypeError::TypeMismatch {
+            expected: "int".to_string(),
+            found: "string".to_string(),
+            location: Span {
+                file_id: baml_base::FileId::new(0),
+                range: TextRange::new(20.into(), 30.into()),
+            },
+            info_location: Some(test_span()),
+        };
+
+        let diag = error.to_diagnostic(Clone::clone, |s| *s);
+        assert_eq!(diag.code(), "E0001");
+        assert_eq!(diag.annotations.len(), 2); // primary + info span
+        assert!(diag.related_info.is_empty());
         assert_eq!(diag.phase, DiagnosticPhase::Type);
     }
 

@@ -4,11 +4,11 @@ class Partial {
   field2  // Missing type entirely
   field3 string @  // Incomplete attribute
   field4 string @alias(  // Unclosed attribute
-  field5 string  // This should parse correctly
+  field5 string  // This should break as `field5` is treated as part of the attribute
 }
 
 function Incomplete(  // Missing parameters closing
-  param1 string
+  param1: string
 
 function NextFunction() -> string {  // Should still parse this
   return "parsed"

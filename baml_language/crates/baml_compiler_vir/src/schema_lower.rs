@@ -34,12 +34,12 @@ pub(crate) fn lower_schema(
     let mut functions = Vec::new();
 
     for file in project.files(db) {
-        let item_tree = file_item_tree(db, *file);
         let items_struct = file_items(db, *file);
 
         for item in items_struct.items(db) {
             match item {
                 ItemId::Class(class_loc) => {
+                    let item_tree = file_item_tree(db, class_loc.file(db));
                     let class = &item_tree[class_loc.id(db)];
                     classes.push(lower_class(
                         class,
@@ -49,6 +49,7 @@ pub(crate) fn lower_schema(
                     ));
                 }
                 ItemId::Enum(enum_loc) => {
+                    let item_tree = file_item_tree(db, enum_loc.file(db));
                     let enum_def = &item_tree[enum_loc.id(db)];
                     enums.push(lower_enum(enum_def));
                 }
@@ -103,7 +104,9 @@ fn convert_ty(
 ) -> Ty {
     baml_type::convert_tir_ty(tir_ty, type_aliases, recursive_aliases)
         .and_then(baml_type::sanitize_for_runtime)
-        .unwrap_or(Ty::Null)
+        .unwrap_or(Ty::Null {
+            attr: baml_type::TyAttr::default(),
+        })
 }
 
 fn lower_class(
@@ -117,12 +120,17 @@ fn lower_class(
         .iter()
         .map(|field| {
             let (tir_ty, _) = resolution_ctx.lower_type_ref(&field.type_ref, Span::default());
+            let ty = convert_ty(&tir_ty, type_aliases, recursive_aliases);
+            // TyAttr now flows structurally: TypeRef.attr → Ty.attr → baml_type::Ty.attr.
+            // No workaround needed.
+
             VirField {
                 name: field.name.clone(),
-                ty: convert_ty(&tir_ty, type_aliases, recursive_aliases),
+                ty,
                 description: attr_to_option(&field.description),
                 alias: attr_to_option(&field.alias),
                 skip: attr_to_bool(&field.skip),
+                field_attr: field.field_attr.clone(),
             }
         })
         .collect();
@@ -133,6 +141,7 @@ fn lower_class(
         is_dynamic: attr_to_bool(&class.is_dynamic),
         description: attr_to_option(&class.description),
         alias: attr_to_option(&class.alias),
+        ty_attr: class.ty_attr.clone(),
     }
 }
 
@@ -153,6 +162,7 @@ fn lower_enum(enum_def: &baml_compiler_hir::Enum) -> VirEnum {
         variants,
         description: None, // HIR Enum has no @@description
         alias: attr_to_option(&enum_def.alias),
+        ty_attr: enum_def.ty_attr.clone(),
     }
 }
 

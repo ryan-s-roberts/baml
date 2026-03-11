@@ -44,6 +44,46 @@ pub struct Program {
     /// Pre-formatted Jinja `{% macro %}` definitions for all `template_strings`.
     /// Prepended to function prompt templates by `get_jinja_template`.
     pub template_strings_macros: String,
+
+    /// Client build metadata for constructing full client trees at runtime.
+    /// Keyed by client name.
+    pub client_metadata: HashMap<String, ClientBuildMeta>,
+
+    /// Compiled test cases.
+    pub test_cases: Vec<TestCase>,
+}
+
+/// Metadata for building a client tree at runtime.
+///
+/// Stored on `Program` during compilation, transferred to `SysOpContext` during engine construction.
+#[derive(Debug, Clone, Default)]
+pub struct ClientBuildMeta {
+    /// Provider type mapped to client type enum.
+    pub client_type: ClientBuildType,
+    /// Sub-client names (for composite clients).
+    pub sub_client_names: Vec<String>,
+    /// Retry policy metadata, if specified.
+    pub retry_policy: Option<RetryPolicyMeta>,
+    /// Optional round-robin start index (`options { start ... }`).
+    pub round_robin_start: Option<i32>,
+}
+
+/// Client type for build metadata (mirrors runtime `LlmClientType`).
+#[derive(Debug, Clone, Default)]
+pub enum ClientBuildType {
+    #[default]
+    Primitive,
+    Fallback,
+    RoundRobin,
+}
+
+/// Retry policy metadata stored at compile time.
+#[derive(Debug, Clone)]
+pub struct RetryPolicyMeta {
+    pub max_retries: i64,
+    pub initial_delay_ms: i64,
+    pub multiplier: f64,
+    pub max_delay_ms: i64,
 }
 
 impl Program {
@@ -70,6 +110,61 @@ impl Program {
 }
 
 // ============================================================================
+// SysOp Error/Panic Contract Categories
+// ============================================================================
+
+/// Contract-level error categories for `sys_op` throw contracts.
+///
+/// These are the finite set of categories that `#[throws(...)]` annotations
+/// reference. Each `OpErrorKind` variant maps to exactly one category via
+/// `OpErrorKind::category()`. Rich detail stays in `OpErrorKind`; this enum
+/// is purely for contract enforcement and compiler analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SysOpErrorCategory {
+    Io,
+    Timeout,
+    InvalidArgument,
+    Unsupported,
+    NotImplemented,
+    AccessError,
+    RenderPrompt,
+    LlmClient,
+    /// Wildcard for development convenience. Must be explicitly declared in
+    /// `#[throws(DevOther)]` and should be migrated to named categories.
+    DevOther,
+}
+
+impl std::fmt::Display for SysOpErrorCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io => write!(f, "Io"),
+            Self::Timeout => write!(f, "Timeout"),
+            Self::InvalidArgument => write!(f, "InvalidArgument"),
+            Self::Unsupported => write!(f, "Unsupported"),
+            Self::NotImplemented => write!(f, "NotImplemented"),
+            Self::AccessError => write!(f, "AccessError"),
+            Self::RenderPrompt => write!(f, "RenderPrompt"),
+            Self::LlmClient => write!(f, "LlmClient"),
+            Self::DevOther => write!(f, "DevOther"),
+        }
+    }
+}
+
+/// Contract-level panic categories for `sys_op` panic contracts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SysOpPanicCategory {
+    HostPanic,
+}
+
+impl std::fmt::Display for SysOpPanicCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::HostPanic => write!(f, "HostPanic"),
+        }
+    }
+}
+
+// ============================================================================
 // External Operations
 // ============================================================================
 
@@ -82,7 +177,7 @@ impl Program {
 /// and `snake_case` names. This enum, `path()`, `sys_op_for_path()`, and `Display`
 /// are all generated from it — no manual maintenance needed.
 macro_rules! define_sys_op_enum {
-    ($({ $Variant:ident, $path:expr, $snake:ident, $uses_ctx:expr })*) => {
+    ($({ $Variant:ident, $path:expr, $snake:ident, $uses_ctx:expr, [$($throw_cat:ident),*], [$($panic_cat:ident),*] })*) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum SysOp {
             $( $Variant, )*
@@ -93,6 +188,20 @@ macro_rules! define_sys_op_enum {
             pub const fn path(&self) -> &'static str {
                 match self {
                     $( SysOp::$Variant => $path, )*
+                }
+            }
+
+            /// Error categories this `sys_op` is allowed to throw per its contract.
+            pub fn allowed_error_categories(&self) -> &'static [SysOpErrorCategory] {
+                match self {
+                    $( SysOp::$Variant => &[$(SysOpErrorCategory::$throw_cat),*], )*
+                }
+            }
+
+            /// Panic categories this `sys_op` is allowed to surface per its contract.
+            pub fn allowed_panic_categories(&self) -> &'static [SysOpPanicCategory] {
+                match self {
+                    $( SysOp::$Variant => &[$(SysOpPanicCategory::$panic_cat),*], )*
                 }
             }
         }
@@ -194,6 +303,12 @@ pub struct Function {
     /// Number of arguments the function accepts.
     pub arity: usize,
 
+    /// Number of additional local slots (beyond callee + params) needed by the frame.
+    ///
+    /// The VM allocates these slots when creating a bytecode frame, instead of
+    /// relying on a dedicated bytecode instruction.
+    pub real_local_count: usize,
+
     /// Bytecode to execute.
     ///
     /// Only relevant if [`Self::kind`] is [`FunctionKind::Bytecode`].
@@ -202,10 +317,17 @@ pub struct Function {
     /// Type of function.
     pub kind: FunctionKind,
 
-    /// Local variable names.
+    /// Local variable names indexed by slot number.
     ///
-    /// This is basically debug info, VM doesn't need it all to run.
-    pub locals_in_scope: Vec<Vec<String>>,
+    /// Debug info: maps eval-stack slot indices to variable names.
+    /// Slot 0 is the function reference, slots 1..arity are parameters.
+    pub local_names: Vec<String>,
+
+    /// Lexical scope metadata for named locals.
+    ///
+    /// Used by debugger UIs to determine which variables are visible at a
+    /// given source location.
+    pub debug_locals: Vec<crate::bytecode::DebugLocalScope>,
 
     /// Span of the function as computed by the parser.
     pub span: baml_base::Span,
@@ -232,11 +354,38 @@ pub struct Function {
 
     /// LLM-specific metadata (prompt template, client name). `None` for non-LLM functions.
     pub body_meta: Option<FunctionMeta>,
+
+    /// Whether this function should be traced (emit span notifications on call/return).
+    /// Set to `true` for LLM functions by the compiler.
+    pub trace: bool,
 }
 
 impl std::fmt::Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "<fn {}>", self.name)
+    }
+}
+
+impl Function {
+    /// Get the source span associated with a bytecode PC.
+    pub fn source_span_for_pc(&self, pc: usize) -> Option<baml_base::Span> {
+        self.bytecode.line_entry_for_pc(pc).map(|entry| entry.span)
+    }
+
+    /// Get named locals whose lexical scope contains the source span at `pc`.
+    pub fn debug_locals_in_scope(&self, pc: usize) -> Vec<&crate::bytecode::DebugLocalScope> {
+        let Some(span) = self.source_span_for_pc(pc) else {
+            return Vec::new();
+        };
+
+        self.debug_locals
+            .iter()
+            .filter(|local| {
+                local.scope_span.file_id == span.file_id
+                    && local.scope_span.range.start() <= span.range.start()
+                    && local.scope_span.range.end() >= span.range.end()
+            })
+            .collect()
     }
 }
 
@@ -247,6 +396,7 @@ pub struct ClassField {
     pub field_type: Ty,
     pub description: Option<String>,
     pub alias: Option<String>,
+    pub field_attr: baml_type::FieldAttr,
 }
 
 /// Runtime class representation.
@@ -267,6 +417,9 @@ pub struct Class {
     /// Type tag for this class, used by `TypeTag` instruction for jump table dispatch.
     /// Assigned during codegen as `CLASS_BASE + class_index`.
     pub type_tag: i64,
+
+    /// Class-level type attribute (e.g., from @@stream.done).
+    pub ty_attr: baml_type::TyAttr,
 }
 
 impl std::fmt::Display for Class {
@@ -314,6 +467,9 @@ pub struct Enum {
 
     /// Enum-level serialization alias.
     pub alias: Option<String>,
+
+    /// Enum-level type attribute.
+    pub ty_attr: baml_type::TyAttr,
 }
 
 impl std::fmt::Display for Enum {
@@ -388,6 +544,44 @@ impl std::fmt::Display for Value {
     }
 }
 
+// ============================================================================
+// Test Cases
+// ============================================================================
+
+/// A constant value for test arguments.
+///
+/// Self-contained type with no dependency on HIR or external types.
+/// Converted from HIR's `TestArgValue` during emission, and converted
+/// to `BexExternalValue` in the engine for function calls.
+#[derive(Clone, Debug)]
+pub enum TestArgValue {
+    Null,
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    String(String),
+    Array {
+        element_type: Ty,
+        items: Vec<TestArgValue>,
+    },
+    Map {
+        key_type: Ty,
+        value_type: Ty,
+        entries: IndexMap<String, TestArgValue>,
+    },
+}
+
+/// A compiled test case, ready for execution.
+#[derive(Clone, Debug)]
+pub struct TestCase {
+    /// Test name (e.g., "`TestAddOne`").
+    pub name: String,
+    /// Function names this test targets.
+    pub function_names: Vec<String>,
+    /// Test arguments, keyed by parameter name.
+    pub args: IndexMap<String, TestArgValue>,
+}
+
 /// Compile-time constant values.
 ///
 /// Similar to `Value` but uses `ObjectIndex` for object references instead of `HeapPtr`.
@@ -423,6 +617,19 @@ pub type MediaValue = std::sync::Arc<baml_builtins::MediaValue>;
 
 /// Prompt AST tree node.
 pub type PromptAst = std::sync::Arc<baml_builtins::PromptAst>;
+
+/// Opaque handle to a `Collector` object from `bex_events`.
+///
+/// Uses `Arc<dyn Any + Send + Sync>` to avoid a dependency from `bex_vm_types` on `bex_events`.
+/// Downcast to `bex_events::Collector` at the `bex_engine` layer.
+#[derive(Clone, Debug)]
+pub struct CollectorRef(pub std::sync::Arc<dyn std::any::Any + Send + Sync>);
+
+impl PartialEq for CollectorRef {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
 
 /// Any data that the Baml program can reference and is allocated on heap.
 ///
@@ -477,6 +684,12 @@ pub enum Object {
     /// External resource (file handle, socket, etc.).
     Resource(ResourceHandle),
 
+    /// Collector object (opaque handle to `bex_events::Collector`).
+    Collector(CollectorRef),
+
+    /// A type descriptor value — wraps a `baml_type::Ty`.
+    Type(baml_type::Ty),
+
     #[cfg(feature = "heap_debug")]
     Sentinel(SentinelKind),
     // TODO: Figure out how to handle this here.
@@ -497,6 +710,8 @@ impl std::fmt::Display for Object {
             Object::Map(map) => write!(f, "<map len={}>", map.len()),
             Object::Media(media) => media.fmt(f),
             Object::Resource(r) => write!(f, "<{r}>"),
+            Object::Collector(_) => write!(f, "<collector>"),
+            Object::Type(ty) => write!(f, "<type: {ty}>"),
             Object::PromptAst(prompt) => write!(f, "<prompt_ast {prompt:?}>"),
             Object::Future(future) => match future {
                 Future::Pending(future) => {
@@ -595,6 +810,8 @@ pub enum ObjectType {
     Future(FutureType),
     Resource,
     PromptAst,
+    Collector,
+    Type,
 }
 
 impl ObjectType {
@@ -611,6 +828,8 @@ impl ObjectType {
             Object::Media(media) => Self::Media(media.kind),
             Object::Resource(_) => Self::Resource,
             Object::PromptAst(_) => Self::PromptAst,
+            Object::Collector(_) => Self::Collector,
+            Object::Type(_) => Self::Type,
             Object::Future(fut) => Self::Future(fut.into()),
             #[cfg(feature = "heap_debug")]
             Object::Sentinel(_) => Self::Any,
@@ -647,6 +866,8 @@ impl std::fmt::Display for ObjectType {
             ObjectType::Media(media_kind) => write!(f, "{media_kind}"),
             ObjectType::Resource => write!(f, "resource"),
             ObjectType::PromptAst => write!(f, "prompt_ast"),
+            ObjectType::Collector => write!(f, "collector"),
+            ObjectType::Type => write!(f, "type"),
         }
     }
 }

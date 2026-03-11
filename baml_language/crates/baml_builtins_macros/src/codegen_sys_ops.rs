@@ -54,23 +54,33 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
                     let extraction = sys_op_extraction(d, &collected.builtin_types);
 
                     let uses_ctx = d.uses_engine_ctx;
+                    let has_regular_params = d.receiver.is_some() || !d.params.is_empty();
+
                     let ctx_param = if uses_ctx {
-                        quote!(, ctx: &SysOpContext)
+                        if has_regular_params {
+                            quote!(, ctx: &SysOpContext)
+                        } else {
+                            quote!(ctx: &SysOpContext)
+                        }
                     } else {
                         quote!()
                     };
                     let ctx_arg = if uses_ctx {
-                        quote!(, ctx)
+                        if has_regular_params {
+                            quote!(, ctx)
+                        } else {
+                            quote!(ctx)
+                        }
                     } else {
                         quote!()
                     };
 
                     let output_type = sys_op_output_type(d, &collected.builtin_types);
 
-                    // Clean method: &self + params. Implementors override this.
+                    // Clean method: &self + call_id + params. Implementors override this.
                     let clean_method = quote! {
                         #[allow(unused_variables)]
-                        fn #fn_name(&self, #clean_params #ctx_param) -> #output_type {
+                        fn #fn_name(&self, call_id: CallId, #clean_params #ctx_param) -> #output_type {
                             SysOpOutput::err(OpErrorKind::Unsupported)
                         }
                     };
@@ -83,6 +93,7 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
                             heap: &::std::sync::Arc<BexHeap>,
                             args: Vec<bex_heap::BexValue<'_>>,
                             ctx: &SysOpContext,
+                            call_id: CallId,
                         ) -> SysOpResult {
                             if args.len() != #arg_count_lit {
                                 return SysOpResult::Ready(Err(OpError::new(
@@ -94,7 +105,7 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
                                 )));
                             }
                             #extraction
-                            self.#fn_name(#clean_call_args #ctx_arg).into_result(SysOp::#variant_name)
+                            self.#fn_name(call_id, #clean_call_args #ctx_arg).into_result(SysOp::#variant_name)
                         }
                     };
 
@@ -129,7 +140,7 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
             let fn_name = &d.fn_name;
             let glue_fn_name = format_ident!("__{}", fn_name);
             quote! {
-                #fn_name: ::std::sync::Arc::new(move |heap, args, ctx| T::default().#glue_fn_name(heap, args, ctx)),
+                #fn_name: ::std::sync::Arc::new(move |heap, args, ctx, call_id| T::default().#glue_fn_name(heap, args, ctx, call_id)),
             }
         })
         .collect();
@@ -162,7 +173,7 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
                     let fn_name = &d.fn_name;
                     let glue_fn_name = format_ident!("__{}", fn_name);
                     quote! {
-                        self.inner.#fn_name = ::std::sync::Arc::new(move |heap, args, ctx| T::default().#glue_fn_name(heap, args, ctx));
+                        self.inner.#fn_name = ::std::sync::Arc::new(move |heap, args, ctx, call_id| T::default().#glue_fn_name(heap, args, ctx, call_id));
                     }
                 })
                 .collect();
@@ -186,7 +197,7 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
                     quote! {
                         self.inner.#fn_name = {
                             let __instance = ::std::sync::Arc::clone(&instance);
-                            ::std::sync::Arc::new(move |heap, args, ctx| __instance.#glue_fn_name(heap, args, ctx))
+                            ::std::sync::Arc::new(move |heap, args, ctx, call_id| __instance.#glue_fn_name(heap, args, ctx, call_id))
                         };
                     }
                 })
@@ -261,6 +272,7 @@ fn sys_op_rust_type(
         "()" => Ok(quote!(())),
         "Media" => Ok(quote!(bex_vm_types::MediaValue)),
         "PromptAst" => Ok(quote!(bex_vm_types::PromptAst)),
+        "Type" => Ok(quote!(baml_type::Ty)),
         t if t.starts_with("Option<") && t.ends_with('>') => {
             let inner = &t[7..t.len() - 1];
             let inner_type = sys_op_rust_type(inner.trim(), builtin_types)?;
@@ -285,6 +297,9 @@ fn sys_op_extract_one(
 ) -> TokenStream2 {
     match type_name {
         "String" => quote!(#arg_ident.as_string(&__p).cloned()?),
+        "i64" => quote!(#arg_ident.as_int()?),
+        "f64" => quote!(#arg_ident.as_float()?),
+        "bool" => quote!(#arg_ident.as_bool()?),
         _ if builtin_types.contains_key(type_name) && type_name != "PromptAst" => {
             let full_path = builtin_types
                 .get(type_name)
@@ -297,6 +312,7 @@ fn sys_op_extract_one(
             )
         }
         "PromptAst" => quote!(#arg_ident.as_prompt_ast_owned(&__p)?),
+        "Type" => quote!(#arg_ident.as_baml_type_owned(&__p)?),
         _ => quote!(#arg_ident.as_owned_but_very_slow(&__p)?),
     }
 }

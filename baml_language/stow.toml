@@ -44,7 +44,7 @@ ignore_crates = ["rig_*"]
 # Graph visualization settings
 # Run: cargo stow --graph /tmp/deps.svg
 [graph]
-external_deps = ["serde_json", "tokio", "clap", "anyhow", "salsa", "rowan"]
+external_deps = ["serde_json", "tokio", "clap", "anyhow", "salsa", "rowan", "reqwest"]
 
 # Implied dependencies: if a crate depends on both the key and a value,
 # the edge to the value is hidden (it's visually implied by the key).
@@ -59,45 +59,46 @@ bex_vm_types = ["bex_resource_types"]
 # Global dependency rules (apply to ALL crate namespaces)
 [[dependency_rules]]
 pattern = "anyhow"
-allowed_crates = ["*_cli", "tools_*", "baml_lsp_*"]
+allowed_crates = ["*_cli", "tools_*", "cargo-*", "baml_lsp_*"]
 regular_deps_only = true
 reason = "Use thiserror for proper error types in library crates."
 
 # baml namespace configuration
 [[namespaces]]
 name = "baml"
-approved_prefixes = ["compiler", "builtins", "codegen"]
+approved_prefixes = ["compiler", "builtins", "builtins2", "codegen", "compiler2", "lsp2"]
 test_crate_exceptions = ["baml_tests", "baml_codegen_tests"]
-embed_crates = ["tools_onionskin"]
+embed_crates = ["tools_onionskin", "bex_project"]
 
 # baml-specific dependency rules
 [[namespaces.dependency_rules]]
 pattern = "baml_compiler*"
-allowed_prefixes = ["compiler"]
-allowed_crates = ["baml_db", "baml_project", "bridge_cffi", "baml_type"]
+allowed_prefixes = ["compiler", "compiler2"]
+allowed_crates = ["baml_db", "baml_project", "bridge_cffi", "baml_type", "baml_lsp2_actions"]
 reason = "Use baml_db or baml_project to access compiler interfaces."
 
 [[namespaces.dependency_rules]]
 pattern.select = "bex_*"
 pattern.exclude = ["bex_vm_types"]
-allowed_crates = ["bridge_cffi"]
+allowed_crates = ["bridge_cffi", "baml_cli"]
 reason = "baml_* crates should not depend on bex_* crates."
 
 [[namespaces.dependency_rules]]
 pattern.select = "bex_vm_types"
-allowed_crates = ["baml_compiler_emit"]
-reason = "Only compiler_emit crates should depend on bex_vm_types (pure data layer)."
+allowed_crates = ["baml_compiler_emit", "baml_project", "baml_cli"]
+reason = "Only compiler_emit and baml_project crates should depend on bex_vm_types (pure data layer)."
 
 
 # tools namespace configuration
 [[namespaces]]
 name = "tools"
 # Allow tools_stow folder to have package name "cargo-stow" for cargo subcommand convention
-name_exceptions = { "tools_stow" = "cargo-stow" }
+name_exceptions = { "tools_stow" = "cargo-stow", "tools_size_gate" = "cargo-size-gate" }
 
 # bex namespace configuration
 [[namespaces]]
 name = "bex"
+approved_prefixes = ["events"]
 link_crates = ["baml_builtins", "baml_type", "sys_types"]
 
 # lsp namespace configuration
@@ -108,14 +109,16 @@ link_crates = ["baml_db", "baml_project"]
 # bridge namespace configuration
 [[namespaces]]
 name = "bridge"
-link_crates = ["bex_factory", "sys_native", "sys_types"]
+link_crates = ["bex_project", "sys_native", "sys_types"]
 
-# Bridge crates may only depend on bex_factory from the bex namespace (no bex_heap, bex_resource_types, etc.).
+# Bridge crates should go through bex_project for runtime access, not depend on bex internals directly.
+# bridge_wasm needs bex_heap and bex_resource_types for low-level sys ops.
+# bridge_python and bridge_cffi need bex_events for event handling.
 [[namespaces.dependency_rules]]
 pattern.select = "bex_*"
-pattern.exclude = ["bex_factory"]
+pattern.exclude = ["bex_project", "bex_events", "bex_events_native", "bex_heap", "bex_resource_types"]
 allowed_crates = []
-reason = "Bridge crates may only depend on bex_factory from the bex namespace."
+reason = "Bridge crates must use bex_project re-exports, not bex internals directly."
 
 # sys namespace configuration
 [[namespaces]]

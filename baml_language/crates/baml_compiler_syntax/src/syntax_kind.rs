@@ -29,8 +29,12 @@ pub enum SyntaxKind {
     KW_BREAK,
     KW_CONTINUE,
     KW_RETURN,
+    KW_THROW,
     KW_MATCH,
+    KW_CATCH,
+    KW_CATCH_ALL,
     KW_ASSERT,
+    KW_THROWS,
 
     // Other keywords
     KW_WATCH,
@@ -111,6 +115,9 @@ pub enum SyntaxKind {
     PERCENT,     // %
     PLUS_PLUS,   // ++
     MINUS_MINUS, // --
+
+    // Backslash
+    BACKSLASH,
 
     // Whitespace and comments (preserved for losslessness)
     WHITESPACE,
@@ -231,6 +238,12 @@ pub enum SyntaxKind {
     MATCH_ARM,
     MATCH_PATTERN,
     MATCH_GUARD,
+    CATCH_EXPR,
+    CATCH_CLAUSE,
+    CATCH_ARM,
+    CATCH_PATTERN,
+    THROW_EXPR,
+    THROWS_CLAUSE,
     WHILE_STMT,
     FOR_EXPR,
     LET_STMT,
@@ -238,11 +251,16 @@ pub enum SyntaxKind {
     BREAK_STMT,
     CONTINUE_STMT,
     RETURN_STMT,
+    THROW_STMT,
     ASSERT_STMT,
 
     // Expression components
     CALL_ARGS,
     GENERIC_ARGS,
+    /// Declaration-site generic type parameter list: `<T>` or `<K, V>` on class/function defs.
+    GENERIC_PARAM_LIST,
+    /// A single type parameter name inside a `GENERIC_PARAM_LIST`.
+    GENERIC_PARAM,
     OBJECT_LITERAL,
     OBJECT_FIELD,
     SPREAD_ELEMENT, // ...expr in object/array literals
@@ -278,6 +296,19 @@ impl SyntaxKind {
                 | SyntaxKind::NEWLINE
                 | SyntaxKind::LINE_COMMENT
                 | SyntaxKind::BLOCK_COMMENT
+        )
+    }
+
+    /// Check if this is a whitespace token.
+    pub fn is_whitespace(self) -> bool {
+        matches!(self, SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE)
+    }
+
+    /// Check if this is a comment token.
+    pub fn is_comment(self) -> bool {
+        matches!(
+            self,
+            SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT | SyntaxKind::HEADER_COMMENT
         )
     }
 
@@ -325,6 +356,41 @@ impl SyntaxKind {
                 | TILDE
                 | LESS_LESS
                 | GREATER_GREATER
+        )
+    }
+
+    /// Check if this is a keyword token.
+    pub fn is_keyword(self) -> bool {
+        matches!(
+            self,
+            Self::KW_CLASS
+                | Self::KW_ENUM
+                | Self::KW_FUNCTION
+                | Self::KW_CLIENT
+                | Self::KW_GENERATOR
+                | Self::KW_TEST
+                | Self::KW_RETRY_POLICY
+                | Self::KW_TEMPLATE_STRING
+                | Self::KW_TYPE_BUILDER
+                | Self::KW_IF
+                | Self::KW_ELSE
+                | Self::KW_FOR
+                | Self::KW_WHILE
+                | Self::KW_LET
+                | Self::KW_IN
+                | Self::KW_BREAK
+                | Self::KW_CONTINUE
+                | Self::KW_RETURN
+                | Self::KW_THROW
+                | Self::KW_MATCH
+                | Self::KW_CATCH
+                | Self::KW_CATCH_ALL
+                | Self::KW_ASSERT
+                | Self::KW_THROWS
+                | Self::KW_WATCH
+                | Self::KW_INSTANCEOF
+                | Self::KW_ENV
+                | Self::KW_DYNAMIC
         )
     }
 }

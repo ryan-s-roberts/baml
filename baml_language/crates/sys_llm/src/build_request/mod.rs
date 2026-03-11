@@ -43,8 +43,9 @@ pub(crate) trait LlmRequestBuilder {
     /// Convert a specialized prompt into the JSON body fields specific to this provider.
     fn build_prompt_body(
         &self,
+        client: &LlmPrimitiveClient,
         prompt: bex_vm_types::PromptAst,
-    ) -> serde_json::Map<String, serde_json::Value>;
+    ) -> Result<serde_json::Map<String, serde_json::Value>, BuildRequestError>;
 
     // --- Default methods (shared logic) ---
 
@@ -53,10 +54,11 @@ pub(crate) trait LlmRequestBuilder {
         &self,
         client: &LlmPrimitiveClient,
         prompt: bex_vm_types::PromptAst,
+        stream: bool,
     ) -> Result<RawHttpRequest, BuildRequestError> {
         let url = self.build_url(client)?;
         let headers = self.build_headers(client);
-        let body = self.build_body(client, prompt)?;
+        let body = self.build_body(client, prompt, stream)?;
         Ok(RawHttpRequest {
             method: "POST".to_string(),
             url,
@@ -86,12 +88,13 @@ pub(crate) trait LlmRequestBuilder {
         &self,
         client: &LlmPrimitiveClient,
         prompt: bex_vm_types::PromptAst,
+        _stream: bool,
     ) -> Result<String, BuildRequestError> {
         let mut body = serde_json::Map::new();
         if let Some(model) = get_string_option(client, "model") {
             body.insert("model".to_string(), serde_json::Value::String(model));
         }
-        body.extend(self.build_prompt_body(prompt));
+        body.extend(self.build_prompt_body(client, prompt)?);
         self.forward_options(client, &mut body);
         serde_json::to_string(&body).map_err(|e| BuildRequestError::InvalidOption {
             key: "body".into(),
@@ -127,6 +130,7 @@ pub(crate) trait LlmRequestBuilder {
 pub(crate) fn build_request(
     client: &LlmPrimitiveClient,
     prompt: bex_vm_types::PromptAst,
+    stream: bool,
 ) -> Result<builtin_types::owned::HttpRequest, BuildRequestError> {
     let provider = LlmProvider::from_str(&client.provider)
         .map_err(|_| BuildRequestError::UnsupportedLlmProvider(client.provider.clone()))?;
@@ -136,11 +140,15 @@ pub(crate) fn build_request(
         | LlmProvider::OpenAiGeneric
         | LlmProvider::AzureOpenAi
         | LlmProvider::Ollama
-        | LlmProvider::OpenRouter
-        | LlmProvider::OpenAiResponses => {
-            openai::OpenAiBuilder::new(&provider).build_request(client, prompt)?
+        | LlmProvider::OpenRouter => {
+            openai::OpenAiBuilder::new(&provider).build_request(client, prompt, stream)?
         }
-        LlmProvider::Anthropic => anthropic::AnthropicBuilder.build_request(client, prompt)?,
+        LlmProvider::OpenAiResponses => {
+            openai::OpenAiResponsesBuilder::new(&provider).build_request(client, prompt, stream)?
+        }
+        LlmProvider::Anthropic => {
+            anthropic::AnthropicBuilder.build_request(client, prompt, stream)?
+        }
         LlmProvider::GoogleAi
         | LlmProvider::VertexAi
         | LlmProvider::AwsBedrock
@@ -183,6 +191,22 @@ pub(crate) enum BuildRequestError {
     MissingOption(String),
     #[error("Invalid option value for '{key}': {reason}")]
     InvalidOption { key: String, reason: String },
+    #[error("Unsupported media: {0}")]
+    UnsupportedMedia(String),
+    #[error("File not resolved: {0}")]
+    FileNotResolved(String),
+}
+
+/// Returns the MIME type of a media value, or an error if none is set.
+pub(crate) fn mime_type_as_ok(
+    media: &baml_builtins::MediaValue,
+) -> Result<&str, BuildRequestError> {
+    media.mime_type.as_deref().ok_or_else(|| {
+        BuildRequestError::UnsupportedMedia(format!(
+            "missing MIME type for {} media; please specify one explicitly",
+            media.kind
+        ))
+    })
 }
 
 /// Helper to extract a string option from client.options.
@@ -285,7 +309,7 @@ mod tests {
     fn test_unsupported_provider() {
         let client = make_client("unknown-provider", vec![]);
         let prompt = msg("user", "hello");
-        let result = build_request(&client, prompt);
+        let result = build_request(&client, prompt, false);
         assert!(result.is_err());
         assert!(
             result
@@ -313,7 +337,7 @@ mod tests {
         let system_text = "Given the receipt below:\n\n```\ntest@email.com\n```\n\nAnswer in JSON using this schema:\n{\n  items: [\n    {\n      name: string,\n      description: string or null,\n      quantity: int,\n      price: float,\n    }\n  ],\n  total_cost: float or null,\n  venue: \"barisa\" or \"ox_burger\",\n}";
         let prompt = Arc::new(PromptAst::Vec(vec![msg("system", system_text)]));
 
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
 
         // Verify envelope
         assert_eq!(result.method, "POST");
@@ -364,7 +388,7 @@ mod tests {
             msg("user", "Write a nice short story about Dr. Pepper"),
         ]));
 
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
 
         assert_eq!(result.url, "https://api.openai.com/v1/chat/completions");
 
@@ -399,7 +423,7 @@ mod tests {
             vec![("model", BexExternalValue::String("gpt-4o".into()))],
         );
         let prompt = msg("user", "Hello world");
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
         let body = parse_body(&result);
         assert!(body["messages"][0]["content"].is_array());
         assert_eq!(body["messages"][0]["content"][0]["type"], "text");
@@ -416,8 +440,8 @@ mod tests {
             )],
         );
         let prompt = msg("user", "hello");
-        let result = build_request(&client, prompt).unwrap();
-        assert_eq!(result.url, "https://custom.api.com/v1/chat/completions");
+        let result = build_request(&client, prompt, false).unwrap();
+        assert_eq!(result.url, "https://custom.api.com/chat/completions");
     }
 
     #[test]
@@ -430,7 +454,7 @@ mod tests {
             ],
         );
         let prompt = msg("user", "hello");
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
         let body = parse_body(&result);
         assert_eq!(body["temperature"], 0.7);
     }
@@ -449,7 +473,7 @@ mod tests {
             ],
         );
         let prompt = msg("user", "hello");
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
         let body = parse_body(&result);
         assert!(body.get("api_key").is_none());
         assert!(body.get("base_url").is_none());
@@ -481,7 +505,7 @@ mod tests {
             msg("user", "Write a nice short story about Dr. Pepper"),
         ]));
 
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
 
         // Verify envelope
         assert_eq!(result.method, "POST");
@@ -528,7 +552,7 @@ mod tests {
             ],
         );
         let prompt = msg("user", "Hello");
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
         let body = parse_body(&result);
         assert!(body.get("system").is_none());
         assert_eq!(body["messages"].as_array().unwrap().len(), 1);
@@ -554,15 +578,21 @@ mod tests {
                 (
                     "allowed_role_metadata",
                     BexExternalValue::Array {
-                        element_type: Ty::String,
+                        element_type: Ty::String {
+                            attr: baml_type::TyAttr::default(),
+                        },
                         items: vec![BexExternalValue::String("cache_control".into())],
                     },
                 ),
                 (
                     "headers",
                     BexExternalValue::Map {
-                        key_type: Ty::String,
-                        value_type: Ty::String,
+                        key_type: Ty::String {
+                            attr: baml_type::TyAttr::default(),
+                        },
+                        value_type: Ty::String {
+                            attr: baml_type::TyAttr::default(),
+                        },
                         entries: header_entries,
                     },
                 ),
@@ -570,7 +600,7 @@ mod tests {
         );
 
         let prompt = msg("user", "hello");
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
 
         assert_eq!(
             result.headers.get("anthropic-beta").unwrap(),
@@ -592,7 +622,7 @@ mod tests {
             )],
         );
         let prompt = msg("user", "hello");
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
         assert_eq!(
             result.headers.get("anthropic-version").unwrap(),
             "2024-01-01"
@@ -603,7 +633,7 @@ mod tests {
     fn test_anthropic_default_version() {
         let client = make_client("anthropic", vec![]);
         let prompt = msg("user", "hello");
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
         assert_eq!(
             result.headers.get("anthropic-version").unwrap(),
             "2023-06-01"
@@ -623,8 +653,134 @@ mod tests {
             ],
         );
         let prompt = msg("user", "hello");
-        let result = build_request(&client, prompt).unwrap();
+        let result = build_request(&client, prompt, false).unwrap();
         let body = parse_body(&result);
         assert_eq!(body["max_tokens"], 1000);
+    }
+
+    // ========================================================================
+    // OpenAI Responses API tests
+    // ========================================================================
+
+    #[test]
+    fn test_responses_url() {
+        let client = make_client(
+            "openai-responses",
+            vec![
+                ("model", BexExternalValue::String("gpt-4o".into())),
+                ("api_key", BexExternalValue::String("sk-test".into())),
+            ],
+        );
+        let prompt = msg("user", "hello");
+        let result = build_request(&client, prompt, false).unwrap();
+        assert_eq!(result.url, "https://api.openai.com/v1/responses");
+        assert_eq!(
+            result.headers.get("authorization").unwrap(),
+            "Bearer sk-test"
+        );
+    }
+
+    #[test]
+    fn test_responses_uses_input_key() {
+        let client = make_client(
+            "openai-responses",
+            vec![("model", BexExternalValue::String("gpt-4o".into()))],
+        );
+        let prompt = msg("user", "hello");
+        let result = build_request(&client, prompt, false).unwrap();
+        let body = parse_body(&result);
+        assert!(
+            body.get("input").is_some(),
+            "Responses API should use 'input' key"
+        );
+        assert!(
+            body.get("messages").is_none(),
+            "Responses API should not have 'messages' key"
+        );
+    }
+
+    #[test]
+    fn test_responses_input_text_type() {
+        let client = make_client(
+            "openai-responses",
+            vec![("model", BexExternalValue::String("gpt-4o".into()))],
+        );
+        let prompt = msg("user", "hello");
+        let result = build_request(&client, prompt, false).unwrap();
+        let body = parse_body(&result);
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "model": "gpt-4o",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hello"}]
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn test_responses_output_text_for_assistant() {
+        let client = make_client(
+            "openai-responses",
+            vec![("model", BexExternalValue::String("gpt-4o".into()))],
+        );
+        let prompt = Arc::new(PromptAst::Vec(vec![
+            msg("user", "hello"),
+            msg("assistant", "hi there"),
+        ]));
+        let result = build_request(&client, prompt, false).unwrap();
+        let body = parse_body(&result);
+        assert_eq!(body["input"][0]["content"][0]["type"], "input_text");
+        assert_eq!(body["input"][1]["content"][0]["type"], "output_text");
+    }
+
+    #[test]
+    fn test_responses_system_and_user() {
+        let client = make_client(
+            "openai-responses",
+            vec![("model", BexExternalValue::String("gpt-4o".into()))],
+        );
+        let prompt = Arc::new(PromptAst::Vec(vec![
+            msg("system", "You are helpful."),
+            msg("user", "Hi"),
+        ]));
+        let result = build_request(&client, prompt, false).unwrap();
+        let body = parse_body(&result);
+        assert_eq!(body["input"][0]["role"], "system");
+        assert_eq!(body["input"][0]["content"][0]["type"], "input_text");
+        assert_eq!(body["input"][1]["role"], "user");
+    }
+
+    #[test]
+    fn test_responses_custom_base_url() {
+        let client = make_client(
+            "openai-responses",
+            vec![(
+                "base_url",
+                BexExternalValue::String("https://custom.api.com/v1".into()),
+            )],
+        );
+        let prompt = msg("user", "hello");
+        let result = build_request(&client, prompt, false).unwrap();
+        assert_eq!(result.url, "https://custom.api.com/v1/responses");
+    }
+
+    #[test]
+    fn test_responses_forwards_options() {
+        let client = make_client(
+            "openai-responses",
+            vec![
+                ("model", BexExternalValue::String("gpt-4o".into())),
+                ("temperature", BexExternalValue::Float(0.5)),
+            ],
+        );
+        let prompt = msg("user", "hello");
+        let result = build_request(&client, prompt, false).unwrap();
+        let body = parse_body(&result);
+        assert_eq!(body["temperature"], 0.5);
     }
 }

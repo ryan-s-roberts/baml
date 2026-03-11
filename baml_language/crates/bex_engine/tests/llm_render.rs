@@ -2,14 +2,14 @@
 //!
 //! These tests verify that:
 //! 1. `get_jinja_template` returns the correct template for LLM functions
-//! 2. `get_client_function` returns the correct client chain
+//! 2. `get_client` returns the correct client chain
 //! 3. `render_prompt` correctly renders templates with arguments
 
 use baml_builtins::{PromptAst as BuiltinPromptAst, PromptAstSimple};
-use bex_engine::{EngineError, Ty};
+use baml_type::TyAttr;
+use bex_engine::{FunctionCallContextBuilder, Ty};
 use bex_external_types::BexExternalAdt;
 use bex_heap::{BexExternalValue, builtin_types::owned::LlmPrimitiveClient};
-use sys_types::{OpError, OpErrorKind, SysOp};
 
 #[tokio::test]
 async fn test_render_prompt_directly() {
@@ -43,7 +43,9 @@ async fn test_render_prompt_directly() {
             default_role: client.default_role.clone(),
             allowed_roles: client.allowed_roles,
         },
-        output_format: sys_llm::OutputFormatContent::new(Ty::String),
+        output_format: sys_llm::OutputFormatContent::new(Ty::String {
+            attr: TyAttr::default(),
+        }),
         tags: IndexMap::new(),
         enums: std::collections::HashMap::new(),
     };
@@ -96,7 +98,9 @@ You are a helpful assistant.
             default_role: client.default_role.clone(),
             allowed_roles: client.allowed_roles,
         },
-        output_format: sys_llm::OutputFormatContent::new(Ty::String),
+        output_format: sys_llm::OutputFormatContent::new(Ty::String {
+            attr: TyAttr::default(),
+        }),
         tags: IndexMap::new(),
         enums: std::collections::HashMap::new(),
     };
@@ -174,7 +178,9 @@ async fn test_render_prompt_with_enums() {
             default_role: "user".to_string(),
             allowed_roles: vec!["user".to_string()],
         },
-        output_format: sys_llm::OutputFormatContent::new(Ty::String),
+        output_format: sys_llm::OutputFormatContent::new(Ty::String {
+            attr: TyAttr::default(),
+        }),
         tags: IndexMap::new(),
         enums,
     };
@@ -233,10 +239,16 @@ function test_render() -> int {
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
-    let result = engine.call_function("test_render", vec![]).await;
+    let result = engine
+        .call_function(
+            "test_render",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
+        .await;
 
     match result {
         Ok(value) => {
@@ -274,17 +286,23 @@ function Greet(name: string) -> string {
 
 // Function that returns the PromptAst type - this should work since
 // PromptAst is now a visible builtin type
-function get_prompt() -> PromptAst {
+function get_prompt() -> baml.llm.PromptAst {
     let args = { "name": "World" };
     baml.llm.render_prompt("Greet", args)
 }
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
-    let result = engine.call_function("get_prompt", vec![]).await;
+    let result = engine
+        .call_function(
+            "get_prompt",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
+        .await;
 
     match result {
         Ok(value) => {
@@ -345,10 +363,16 @@ function test_build_request() -> int {
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
-    let result = engine.call_function("test_build_request", vec![]).await;
+    let result = engine
+        .call_function(
+            "test_build_request",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
+        .await;
     assert!(result.is_ok(), "build_request should succeed: {result:?}");
 }
 
@@ -379,42 +403,24 @@ function test_call_llm() -> unknown {
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
     // build_request now succeeds; this should panic at the next unimplemented
     // step: "LlmParseResponse SysOp not yet implemented"
-    let result = engine.call_function("test_call_llm", vec![]).await;
+    let result = engine
+        .call_function(
+            "test_call_llm",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
+        .await;
 
-    match result {
-        Ok(value) => {
-            // Verify we got an error response without asserting exact upstream message
-            if let BexExternalValue::String(s) = &value {
-                assert!(s.contains("error"), "Expected error response, got: {s}");
-                assert!(
-                    s.contains("invalid_request_error") || s.contains("API key"),
-                    "Expected API key error, got: {s}"
-                );
-            } else {
-                panic!("Expected String result, got {value:?}");
-            }
-        }
-        Err(EngineError::ExternalOpFailed(OpError {
-            fn_name: SysOp::BamlHttpSend,
-            kind: OpErrorKind::Other(message),
-        })) if message.contains("HTTP request failed for") => {
-            // network failed
-        }
-        Err(EngineError::ExternalOpFailed(OpError {
-            fn_name: SysOp::BamlLlmPrimitiveClientParse,
-            kind: OpErrorKind::LlmClientError { message },
-        })) if message.contains("You didn't provide an API key.") => {
-            // this is ok, we had an API Error due to invalid API keys
-        }
-        Err(e) => {
-            panic!("test_call_llm failed: {e:?}");
-        }
-    }
+    // Without a valid API key, the orchestration loop will either:
+    // - Get a non-2xx response from OpenAI (ok() == false)
+    // - Get a network error (synthetic response with status_code=0)
+    // Either way, all steps fail and we hit `assert false`.
+    assert!(result.is_err(), "Expected error without valid API key");
 }
 
 #[tokio::test]
@@ -443,42 +449,24 @@ function test_call_llm() -> string {
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
     // build_request now succeeds; this should panic at the next unimplemented
     // step: "LlmParseResponse SysOp not yet implemented"
-    let result = engine.call_function("test_call_llm", vec![]).await;
+    let result = engine
+        .call_function(
+            "test_call_llm",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
+        .await;
 
-    match result {
-        Ok(value) => {
-            // Verify we got an error response without asserting exact upstream message
-            if let BexExternalValue::String(s) = &value {
-                assert!(s.contains("error"), "Expected error response, got: {s}");
-                assert!(
-                    s.contains("invalid_request_error") || s.contains("API key"),
-                    "Expected API key error, got: {s}"
-                );
-            } else {
-                panic!("Expected String result, got {value:?}");
-            }
-        }
-        Err(EngineError::ExternalOpFailed(OpError {
-            fn_name: SysOp::BamlHttpSend,
-            kind: OpErrorKind::Other(message),
-        })) if message.contains("HTTP request failed for") => {
-            // network failed
-        }
-        Err(EngineError::ExternalOpFailed(OpError {
-            fn_name: SysOp::BamlLlmPrimitiveClientParse,
-            kind: OpErrorKind::LlmClientError { message },
-        })) if message.contains("You didn't provide an API key.") => {
-            // this is ok, we had an API Error due to invalid API keys
-        }
-        Err(e) => {
-            panic!("test_direct_llm_call failed: {e:?}");
-        }
-    }
+    // Without a valid API key, the orchestration loop will either:
+    // - Get a non-2xx response from OpenAI (ok() == false)
+    // - Get a network error (synthetic response with status_code=0)
+    // Either way, all steps fail and we hit `assert false`.
+    assert!(result.is_err(), "Expected error without valid API key");
 }
 
 #[tokio::test]
@@ -508,42 +496,24 @@ function test_call_llm() -> unknown {
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
     // build_request now succeeds; this should panic at the next unimplemented
     // step: "LlmParseResponse SysOp not yet implemented"
-    let result = engine.call_function("test_call_llm", vec![]).await;
+    let result = engine
+        .call_function(
+            "test_call_llm",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
+        .await;
 
-    match result {
-        Ok(value) => {
-            panic!("test_call_llm should return an error: {value:?}");
-        }
-        Err(EngineError::ExternalOpFailed(OpError {
-            fn_name: SysOp::BamlHttpSend,
-            kind: OpErrorKind::Other(message),
-        })) if message.contains("HTTP request failed for") => {
-            // network failed
-        }
-        Err(EngineError::ExternalOpFailed(OpError {
-            fn_name: SysOp::BamlLlmPrimitiveClientParse,
-            kind: OpErrorKind::LlmClientError { message },
-        })) if message.contains("You didn't provide an API key.") => {
-            // this is ok, we had an API Error due to invalid API keys
-        }
-        Err(e) => {
-            assert!(
-                matches!(
-                    e,
-                    bex_engine::EngineError::ExternalOpFailed(sys_types::OpError {
-                        kind: sys_types::OpErrorKind::NotImplemented { message: _ },
-                        fn_name: SysOp::BamlLlmPrimitiveClientParse,
-                    })
-                ),
-                "Expected NotImplemented error, got {e}"
-            );
-        }
-    }
+    // Without a valid API key, the orchestration loop will either:
+    // - Get a non-2xx response from OpenAI (ok() == false)
+    // - Get a network error (synthetic response with status_code=0)
+    // Either way, all steps fail and we hit `assert false`.
+    assert!(result.is_err(), "Expected error without valid API key");
 }
 
 // ============================================================================
@@ -580,18 +550,22 @@ function TestFunc(name: string) -> string {
     "#
 }
 
-function get_prompt() -> PromptAst {
+function get_prompt() -> baml.llm.PromptAst {
     let args = { "name": "Alice" };
     baml.llm.render_prompt("TestFunc", args)
 }
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
     let result = engine
-        .call_function("get_prompt", vec![])
+        .call_function(
+            "get_prompt",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
         .await
         .expect("failed to render prompt that calls template_string Greet(name)");
     assert_eq!(result, prompt_ast_string("Hello, Alice!"));
@@ -619,18 +593,22 @@ function TestFunc() -> string {
     prompt #"{{ Outer() }}"#
 }
 
-function get_prompt() -> PromptAst {
+function get_prompt() -> baml.llm.PromptAst {
     let args = {};
     baml.llm.render_prompt("TestFunc", args)
 }
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
     let result = engine
-        .call_function("get_prompt", vec![])
+        .call_function(
+            "get_prompt",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
         .await
         .expect("failed to render prompt with nested template_strings Outer() -> Inner()");
     assert_eq!(result, prompt_ast_string("before INNER after"));
@@ -664,18 +642,22 @@ function TestFunc(label: string, person: Person) -> string {
     "#
 }
 
-function get_prompt() -> PromptAst {
+function get_prompt() -> baml.llm.PromptAst {
     let args = { "label": "User", "person": { "name": "Bob", "age": 42 } };
     baml.llm.render_prompt("TestFunc", args)
 }
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
     let result = engine
-        .call_function("get_prompt", vec![])
+        .call_function(
+            "get_prompt",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
         .await
         .expect("failed to render prompt with 2-arg template_string Describe(label, person)");
     assert_eq!(result, prompt_ast_string("User: Bob (age 42)"));
@@ -703,18 +685,22 @@ function TestFunc() -> string {
 Content here"#
 }
 
-function get_prompt() -> PromptAst {
+function get_prompt() -> baml.llm.PromptAst {
     let args = {};
     baml.llm.render_prompt("TestFunc", args)
 }
 "##;
 
     let snapshot = common::compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(snapshot, sys_types::SysOps::native().into(), None)
+        .expect("Failed to create engine");
 
     let result = engine
-        .call_function("get_prompt", vec![])
+        .call_function(
+            "get_prompt",
+            vec![],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
         .await
         .expect("failed to render prompt that calls parameterless template_string Header()");
     assert_eq!(result, prompt_ast_string("=== HEADER ===\nContent here"));

@@ -23,6 +23,9 @@ pub struct FunctionSignature {
 
     /// Return type
     pub return_type: TypeRef,
+
+    /// Declared throws type (BEP-007). `None` means inferred (no contract).
+    pub throws: Option<TypeRef>,
 }
 
 /// Function parameter.
@@ -55,7 +58,7 @@ impl FunctionSignature {
                     let type_ref = type_node
                         .as_ref()
                         .map(TypeRef::from_ast)
-                        .unwrap_or(TypeRef::Unknown);
+                        .unwrap_or_else(TypeRef::unknown);
 
                     // Store the spans in the source map
                     source_map.push_param_span(Some(param_node.syntax().text_range()));
@@ -74,18 +77,29 @@ impl FunctionSignature {
         let return_type = return_type_node
             .as_ref()
             .map(TypeRef::from_ast)
-            .unwrap_or(TypeRef::Unknown);
+            .unwrap_or_else(TypeRef::unknown);
 
         // Store return type span in source map
         if let Some(span) = return_type_node.map(|t| t.text_range()) {
             source_map.set_return_type_span(span);
         }
 
+        // Extract throws clause (BEP-007)
+        let throws_clause = func_node.throws_clause();
+        let throws = throws_clause
+            .as_ref()
+            .and_then(baml_compiler_syntax::ThrowsClause::type_expr)
+            .map(|te| {
+                source_map.set_throws_type_span(te.syntax().text_range());
+                TypeRef::from_ast(&te)
+            });
+
         (
             Arc::new(FunctionSignature {
                 name,
                 params,
                 return_type,
+                throws,
             }),
             source_map,
         )
@@ -127,7 +141,7 @@ impl TemplateStringSignature {
                     let type_ref = type_node
                         .as_ref()
                         .map(TypeRef::from_ast)
-                        .unwrap_or(TypeRef::Unknown);
+                        .unwrap_or_else(TypeRef::unknown);
 
                     // Store the spans in the source map
                     source_map.push_param_span(Some(param_node.syntax().text_range()));

@@ -439,6 +439,9 @@ pub struct BamlRuntime {
     pub tracer_wrapper: Arc<BamlTracerWrapper>,
     #[cfg(not(target_arch = "wasm32"))]
     pub async_runtime: Arc<tokio::runtime::Runtime>,
+
+    /// Shared env vars for the tracingv2 publisher, updated at each call site.
+    publisher_env_vars: Option<tracingv2::publisher::PublisherEnvVars>,
 }
 
 pub struct TripWire {
@@ -497,7 +500,7 @@ impl BamlRuntime {
         #[cfg(not(target_arch = "wasm32"))]
         let rt = Self::get_tokio_singleton()?;
 
-        let runtime_clone = BamlRuntime {
+        let runtime_for_ast = BamlRuntime {
             ir: ir.clone(),
             db: db.clone(),
             diagnostics: diagnostics.clone(),
@@ -507,7 +510,23 @@ impl BamlRuntime {
             tracer_wrapper: Arc::new(BamlTracerWrapper::new(env_vars)?),
             #[cfg(not(target_arch = "wasm32"))]
             async_runtime: rt.clone(),
+            publisher_env_vars: None,
         };
+
+        let ast_sig: Arc<runtime::AstSignatureWrapper> = Arc::new(
+            Arc::new(runtime_for_ast)
+                .try_into()
+                .context("Internal error: Failed to create event publisher for BAML runtime")?,
+        );
+
+        let publisher_env_vars = tracingv2::publisher::PublisherEnvVars::new(env_vars.clone());
+
+        tracingv2::publisher::register_publisher(
+            ast_sig,
+            publisher_env_vars.clone(),
+            #[cfg(not(target_arch = "wasm32"))]
+            rt.clone(),
+        );
 
         let runtime = BamlRuntime {
             ir: ir.clone(),
@@ -519,19 +538,8 @@ impl BamlRuntime {
             tracer_wrapper: Arc::new(BamlTracerWrapper::new(env_vars)?),
             #[cfg(not(target_arch = "wasm32"))]
             async_runtime: rt.clone(),
+            publisher_env_vars: Some(publisher_env_vars),
         };
-
-        tracingv2::publisher::start_publisher(
-            Arc::new(
-                (Arc::new(runtime_clone), env_vars.clone())
-                    .try_into()
-                    .context(
-                        "Internal error: Failed to create a event publisher for BAML runtime",
-                    )?,
-            ),
-            #[cfg(not(target_arch = "wasm32"))]
-            rt.clone(),
-        );
 
         Ok(runtime)
     }
@@ -967,6 +975,9 @@ impl BamlRuntime {
         G: Fn(),
     {
         baml_log::set_from_env(&env_vars).unwrap();
+        if let Some(ref publisher_env_vars) = self.publisher_env_vars {
+            publisher_env_vars.update(env_vars.clone());
+        }
 
         log::info!(
             "[Runtime] run_test_with_expr_events start function={function_name} test={test_name}...."
@@ -1393,6 +1404,9 @@ impl BamlRuntime {
     ) -> (Result<FunctionResult>, FunctionCallId) {
         // baml_log::info!("env vars: {:#?}", env_vars.clone());
         baml_log::set_from_env(&env_vars).unwrap();
+        if let Some(ref publisher_env_vars) = self.publisher_env_vars {
+            publisher_env_vars.update(env_vars.clone());
+        }
 
         log::trace!("Calling function: {function_name}");
         log::debug!("collectors: {:#?}", &collectors);
@@ -1463,6 +1477,9 @@ impl BamlRuntime {
         expr_tx: Option<mpsc::UnboundedSender<Vec<SerializedSpan>>>,
     ) -> Result<FunctionResultStream> {
         baml_log::set_from_env(&env_vars).unwrap();
+        if let Some(ref publisher_env_vars) = self.publisher_env_vars {
+            publisher_env_vars.update(env_vars.clone());
+        }
         self.stream_function_impl(
             function_name,
             params,

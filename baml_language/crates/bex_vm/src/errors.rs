@@ -36,8 +36,8 @@ pub enum InternalError {
     #[error("array index is negative: {0}")]
     ArrayIndexIsNegative(i64),
 
-    #[error("negative instruction pointer: {0}")]
-    NegativeInstructionPtr(isize),
+    #[error("jump offset overflowed instruction pointer")]
+    InvalidJump,
 }
 
 /// Errors that can happen at runtime.
@@ -63,6 +63,9 @@ pub enum RuntimeError {
 
     #[error("division by zero: {left:?} / {right:?}")]
     DivisionByZero { left: Value, right: Value },
+
+    #[error("uncaught throw: {value}")]
+    UnhandledThrow { value: String },
 
     #[error("{0}")]
     Other(String),

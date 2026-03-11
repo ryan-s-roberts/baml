@@ -19,6 +19,21 @@ pub enum HirDiagnostic {
         second_span: Span,
     },
 
+    /// Duplicate method in a class.
+    DuplicateMethod {
+        class_name: String,
+        method_name: String,
+        first_span: Span,
+        second_span: Span,
+    },
+
+    /// Duplicate let-binding in the same scope.
+    DuplicateBinding {
+        name: String,
+        first_span: Span,
+        second_span: Span,
+    },
+
     /// Duplicate variant in an enum.
     DuplicateVariant {
         enum_name: String,
@@ -168,6 +183,23 @@ pub enum HirDiagnostic {
     /// `allowed_roles` values must be strings.
     AllowedRoleNotString { client_name: String, span: Span },
 
+    /// Composite client (fallback/round-robin) has no sub-clients in strategy.
+    EmptyStrategy {
+        client_name: String,
+        provider: String,
+        span: Span,
+    },
+
+    /// Client references a retry policy that doesn't exist.
+    UnknownRetryPolicy {
+        client_name: String,
+        policy_name: String,
+        span: Span,
+    },
+
+    /// Strategy array element is not a valid client name.
+    InvalidStrategyElement { client_name: String, span: Span },
+
     // ============ Syntax Diagnostics ============
     /// Statement missing required semicolon.
     /// In Rust-style blocks, all statements except the final expression need semicolons.
@@ -263,4 +295,12 @@ pub enum HirDiagnostic {
 
     /// Syntax error in `type_builder` block content.
     TypeBuilderSyntaxError { message: String, span: Span },
+
+    // ============ Reserved Prefix Diagnostics ============
+    /// User-defined item uses the reserved `stream_` prefix.
+    ReservedStreamPrefix {
+        item_kind: &'static str, // "class", "type alias", "enum", "function"
+        item_name: String,
+        span: Span,
+    },
 }

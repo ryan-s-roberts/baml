@@ -5,7 +5,7 @@
 use baml_base::Span;
 use baml_compiler_lexer::{Token, TokenKind};
 use baml_compiler_syntax::SyntaxKind;
-use rowan::{GreenNode, GreenNodeBuilder, NodeCache};
+use rowan::{GreenNode, GreenNodeBuilder, NodeCache, TextSize};
 use text_size::TextRange;
 
 use crate::ParseError;
@@ -45,12 +45,16 @@ fn token_kind_to_syntax_kind(kind: TokenKind) -> SyntaxKind {
         TokenKind::Break => SyntaxKind::KW_BREAK,
         TokenKind::Continue => SyntaxKind::KW_CONTINUE,
         TokenKind::Return => SyntaxKind::KW_RETURN,
+        TokenKind::Throw => SyntaxKind::KW_THROW,
         TokenKind::Watch => SyntaxKind::KW_WATCH,
         TokenKind::Instanceof => SyntaxKind::KW_INSTANCEOF,
         TokenKind::Env => SyntaxKind::KW_ENV,
         TokenKind::Dynamic => SyntaxKind::KW_DYNAMIC,
         TokenKind::Match => SyntaxKind::KW_MATCH,
+        TokenKind::Catch => SyntaxKind::KW_CATCH,
+        TokenKind::CatchAll => SyntaxKind::KW_CATCH_ALL,
         TokenKind::Assert => SyntaxKind::KW_ASSERT,
+        TokenKind::Throws => SyntaxKind::KW_THROWS,
 
         // Literals
         TokenKind::Word => SyntaxKind::WORD,
@@ -128,6 +132,9 @@ fn token_kind_to_syntax_kind(kind: TokenKind) -> SyntaxKind {
         TokenKind::PlusPlus => SyntaxKind::PLUS_PLUS,
         TokenKind::MinusMinus => SyntaxKind::MINUS_MINUS,
 
+        // Backslash
+        TokenKind::Backslash => SyntaxKind::BACKSLASH,
+
         // Whitespace
         TokenKind::Whitespace => SyntaxKind::WHITESPACE,
         TokenKind::Newline => SyntaxKind::NEWLINE,
@@ -172,6 +179,10 @@ pub(crate) struct Parser<'a> {
     /// Track nesting depth of generic type arguments (`TYPE_ARGS`, `GENERIC_ARGS`).
     /// Used to detect unmatched '>' when exiting the outermost generic.
     type_args_depth: u32,
+    /// Track contexts where postfix `catch` is not allowed to bind.
+    /// Managed by [`Self::parse_expr_bp_no_catch`]; prefer that helper over
+    /// manually incrementing/decrementing this counter.
+    suppress_catch_depth: u32,
 }
 
 impl<'a> Parser<'a> {
@@ -183,6 +194,7 @@ impl<'a> Parser<'a> {
             pending_greaters: 0,
             pending_greater_span: None,
             type_args_depth: 0,
+            suppress_catch_depth: 0,
         }
     }
 
@@ -604,12 +616,16 @@ impl<'a> Parser<'a> {
     /// Returns true if a '>' was consumed (either standalone or as part of '>>').
     fn expect_greater(&mut self) -> bool {
         // First check if we have a pending '>' from a previous '>>' split.
-        // Don't emit anything - the '>>' token is already in the tree.
+        // Emit that pending `>` as a new token.
         if self.pending_greaters > 0 {
             self.pending_greaters -= 1;
             if self.pending_greaters == 0 {
                 self.pending_greater_span = None;
             }
+            self.events.push(Event::Token {
+                kind: SyntaxKind::GREATER,
+                text: ">".to_string(),
+            });
             return true;
         }
 
@@ -618,10 +634,20 @@ impl<'a> Parser<'a> {
             true
         } else if self.at(TokenKind::GreaterGreater) {
             // Handle '>>' as two '>':
-            // - Consume the '>>' token (adds it to tree once)
+            // - Consume the '>>' token and splits into two '>' tokens (first `>` is added to tree)
             // - Track that the second '>' is pending for the outer generic
-            let span = self.current().map(|t| t.span);
-            self.bump();
+            let span = self.current().map(|t| {
+                let mut span = t.span;
+                // Span should be on the second `>` token only
+                span.range =
+                    TextRange::new(span.range.start() + TextSize::from(1), span.range.end());
+                span
+            });
+            self.events.push(Event::Token {
+                kind: SyntaxKind::GREATER,
+                text: ">".to_string(),
+            });
+            self.current += 1;
             self.pending_greaters += 1;
             self.pending_greater_span = span;
             true
@@ -866,6 +892,47 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Consume token if it is trivia. Returns true if trivia was consumed.
+    fn eat_trivia(&mut self) -> bool {
+        if self.at_line_comment_start() {
+            self.consume_line_comment();
+            true
+        } else if self.at_block_comment_start() {
+            self.consume_block_comment();
+            true
+        } else if let Some(token) = self.tokens.get(self.current)
+            && self.is_basic_trivia(token.kind)
+        {
+            let kind = token_kind_to_syntax_kind(token.kind);
+            self.events.push(Event::Token {
+                kind,
+                text: token.text.clone(),
+            });
+            self.current += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Eat a basic trivia token (whitespace or newline).
+    fn eat_basic_trivia(&mut self) -> bool {
+        let Some(token) = self.tokens.get(self.current) else {
+            return false;
+        };
+        let kind = match token.kind {
+            TokenKind::Whitespace => SyntaxKind::WHITESPACE,
+            TokenKind::Newline => SyntaxKind::NEWLINE,
+            _ => return false,
+        };
+        self.events.push(Event::Token {
+            kind,
+            text: token.text.clone(),
+        });
+        self.current += 1;
+        true
+    }
+
     /// Expect a token, emit error if not found
     fn expect(&mut self, kind: TokenKind) -> bool {
         if self.eat(kind) {
@@ -982,9 +1049,21 @@ impl<'a> Parser<'a> {
     // ============ String Parsing ============
 
     /// Count consecutive Hash tokens starting at current position (skipping basic trivia only)
+    /// Will skip *leading* trivia, but only basic trivia is allowed internally
     fn count_consecutive_hashes(&self) -> usize {
         let mut count = 0;
         let mut i = self.current;
+
+        // Skip all leading trivia (whitespace, newlines, AND comments)
+        while i < self.tokens.len() {
+            if self.is_basic_trivia(self.tokens[i].kind) {
+                i += 1;
+            } else if self.is_line_comment_at(i) || self.is_block_comment_at(i) {
+                i = self.skip_comment_at(i);
+            } else {
+                break;
+            }
+        }
 
         while i < self.tokens.len() {
             let token = &self.tokens[i];
@@ -1001,10 +1080,28 @@ impl<'a> Parser<'a> {
         count
     }
 
-    /// Find the token position after consuming N hashes (skipping basic trivia only)
+    /// Find the token position after consuming N hashes.
+    /// Skips all trivia (whitespace, newlines, and comments) before the first hash,
+    /// then only skips basic trivia (whitespace, newlines) between hashes.
+    ///
+    /// ## Returns
+    /// - `None` if a non-hash, non-basic-trivia token is encountered before the number of hashes is reached.
+    /// - `None` if the end has been reached
+    /// - `Some(i)` with the first non-basic-trivia token after the hashes. Will always be a valid index in [`Self::tokens`].
     fn find_token_after_hashes(&self, hash_count: usize) -> Option<usize> {
         let mut hashes_seen = 0;
         let mut i = self.current;
+
+        // Skip all leading trivia (whitespace, newlines, AND comments)
+        while i < self.tokens.len() {
+            if self.is_basic_trivia(self.tokens[i].kind) {
+                i += 1;
+            } else if self.is_line_comment_at(i) || self.is_block_comment_at(i) {
+                i = self.skip_comment_at(i);
+            } else {
+                break;
+            }
+        }
 
         while i < self.tokens.len() {
             let token = &self.tokens[i];
@@ -1064,6 +1161,9 @@ impl<'a> Parser<'a> {
             return false;
         }
 
+        // before starting the STRING_LITERAL node, handle all leading trivia
+        while self.eat_trivia() {}
+
         self.with_node(SyntaxKind::STRING_LITERAL, |p| {
             p.bump(); // Opening quote
 
@@ -1074,6 +1174,16 @@ impl<'a> Parser<'a> {
                 if loop_counter > 100_000 {
                     p.error_unexpected_token("String parsing exceeded iteration limit".to_string());
                     return;
+                }
+
+                if p.at_raw(TokenKind::Backslash) {
+                    p.bump_raw(); // Consume backslash
+                    if let Some(directly_after) = p.tokens.get(p.current)
+                        && directly_after.kind == TokenKind::Quote
+                    {
+                        p.bump_raw(); // Consume quote without ending string
+                    }
+                    continue;
                 }
 
                 // Check if next token is the closing quote
@@ -1116,6 +1226,9 @@ impl<'a> Parser<'a> {
             // Just hashes, not a raw string
             return false;
         }
+
+        // before starting the RAW_STRING_LITERAL node, handle all leading trivia
+        while self.eat_trivia() {}
 
         self.with_node(SyntaxKind::RAW_STRING_LITERAL, |p| {
             // Consume opening hashes
@@ -1293,6 +1406,8 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse plain text content between Jinja constructs
+    ///
+    /// Will consume trailing whitespace as well.
     fn parse_prompt_text(&mut self, opening_hashes: usize) {
         self.with_node(SyntaxKind::PROMPT_TEXT, |p| {
             // Collect tokens until we hit a Jinja construct or closing delimiter
@@ -1307,6 +1422,7 @@ impl<'a> Parser<'a> {
 
                 // Check for Jinja constructs
                 if p.at_jinja_expression() || p.at_jinja_statement() || p.at_jinja_comment() {
+                    while p.eat_basic_trivia() {} // make it part of the PROMPT_TEXT
                     break;
                 }
 
@@ -1331,7 +1447,16 @@ impl<'a> Parser<'a> {
     /// Parse a field attribute: @alias("name") or @stream.done
     pub(crate) fn parse_field_attribute(&mut self) {
         self.with_node(SyntaxKind::ATTRIBUTE, |p| {
+            let at_span = p.current().map(|t| t.span);
             p.expect(TokenKind::At);
+
+            if p.has_newline_ahead() {
+                // if the attribute name is not on the same line as the @, that's an error
+                if let Some(at_span) = at_span {
+                    p.error("Attribute is missing a name".to_string(), at_span);
+                }
+                return;
+            }
 
             // Attribute name (can be dotted like stream.done)
             // Allow keywords like 'assert' as attribute names (for @assert)
@@ -1416,7 +1541,7 @@ impl<'a> Parser<'a> {
         // - String: @alias("user_name")
         // - Raw string: @description(#"Multi-line\ndescription"#)
         // - Expression: @assert({{ this > 0 }})
-        // - Unquoted string: @description(User is happy) - consumes until ) or ,
+        // - Unquoted string: @alias(my_alias) - one WORD token
 
         if self.parse_any_string() {
             // String argument parsed
@@ -1429,18 +1554,16 @@ impl<'a> Parser<'a> {
             // Expression block: {{ }}
             self.parse_expression_block();
         } else if self.at(TokenKind::Word) {
-            // Unquoted string: consume all tokens until ) or ,
+            // Unquoted string: only permit one word
             self.with_node(SyntaxKind::UNQUOTED_STRING, |p| {
-                while !p.at(TokenKind::RParen) && !p.at(TokenKind::Comma) && !p.at_end() {
-                    p.bump();
-                }
+                p.bump();
             });
         } else {
             self.error_unexpected_token("attribute argument".to_string());
         }
     }
 
-    /// Placeholder for expression block parsing (Phase 4)
+    /// Parse an expression block (`{{ ... }}`).
     fn parse_expression_block(&mut self) {
         // For now, just consume the {{ }} tokens
         self.with_node(SyntaxKind::EXPR, |p| {
@@ -1472,6 +1595,11 @@ impl<'a> Parser<'a> {
         self.with_node(SyntaxKind::TYPE_EXPR, |p| {
             p.parse_type_primary();
 
+            if p.pending_greaters > 0 {
+                // Don't parse modifiers until we've used all
+                // pending `>`
+                return;
+            }
             // Type modifiers
             loop {
                 if p.at(TokenKind::LBracket) {
@@ -1485,6 +1613,21 @@ impl<'a> Parser<'a> {
                     // Union type: string | int | "user" | "assistant"
                     p.bump();
                     p.parse_type_primary();
+                } else if p.at(TokenKind::At) {
+                    // An attribute
+                    let Some(attr_name_first) = p.peek(1) else {
+                        break; // attribute goes on a parent node or something
+                    };
+                    if attr_name_first.kind == TokenKind::Word
+                        && matches!(
+                            attr_name_first.text.as_str(),
+                            "alias" | "description" | "skip"
+                        )
+                    {
+                        // attribute applies to a field, not the type
+                        break;
+                    }
+                    p.parse_field_attribute();
                 } else {
                     break;
                 }
@@ -1541,7 +1684,7 @@ impl<'a> Parser<'a> {
 
                     p.parse_type();
 
-                    while p.eat(TokenKind::Comma) {
+                    while p.pending_greaters == 0 && p.eat(TokenKind::Comma) {
                         p.parse_type();
                     }
 
@@ -1559,6 +1702,12 @@ impl<'a> Parser<'a> {
                             ),
                             span,
                         );
+                    }
+                    for _ in 0..self.pending_greaters {
+                        self.events.push(Event::Token {
+                            kind: SyntaxKind::GREATER,
+                            text: ">".to_string(),
+                        });
                     }
                     self.pending_greaters = 0;
                     self.pending_greater_span = None;
@@ -1598,6 +1747,9 @@ impl<'a> Parser<'a> {
             had_named_param |= self.parse_function_type_param_inner();
 
             while self.eat(TokenKind::Comma) {
+                if self.at(TokenKind::RParen) {
+                    break;
+                }
                 had_named_param |= self.parse_function_type_param_inner();
             }
         }
@@ -1802,6 +1954,11 @@ impl<'a> Parser<'a> {
                 p.error_unexpected_token("class name".to_string());
             }
 
+            // Optional generic parameters: <T> or <K, V>
+            if p.at(TokenKind::Less) {
+                p.parse_generic_param_list();
+            }
+
             // Opening brace
             if !p.expect(TokenKind::LBrace) {
                 return;
@@ -1835,6 +1992,35 @@ impl<'a> Parser<'a> {
         });
     }
 
+    /// Parse declaration-site generic parameter list: `<T>` or `<K, V>`.
+    ///
+    /// This is different from `GENERIC_ARGS` (call-site: `fetch<Response>(url)`).
+    /// This produces `GENERIC_PARAM_LIST` containing `GENERIC_PARAM` children.
+    fn parse_generic_param_list(&mut self) {
+        self.with_node(SyntaxKind::GENERIC_PARAM_LIST, |p| {
+            p.expect(TokenKind::Less); // <
+
+            // Parse comma-separated type parameter names
+            loop {
+                if p.at(TokenKind::Greater) || p.at_end() {
+                    break;
+                }
+                p.with_node(SyntaxKind::GENERIC_PARAM, |p| {
+                    if p.at(TokenKind::Word) {
+                        p.bump(); // type parameter name
+                    } else {
+                        p.error_unexpected_token("type parameter name".to_string());
+                    }
+                });
+                if !p.eat(TokenKind::Comma) {
+                    break;
+                }
+            }
+
+            p.expect(TokenKind::Greater); // >
+        });
+    }
+
     fn parse_field(&mut self) {
         self.with_node(SyntaxKind::FIELD, |p| {
             // Field name - capture span and text before bumping
@@ -1842,16 +2028,20 @@ impl<'a> Parser<'a> {
             let field_name_text = p.current().map(|t| t.text.clone());
             p.bump();
 
+            let has_colon = p.eat(TokenKind::Colon);
+
             // Check if there's a newline before the next token
             // (newline means the type is on a different line - the field is incomplete)
             let newline_before_type = p.has_newline_ahead();
 
-            // Field type - check if we're at a valid type start AND no newline separates them
-            let has_type = p.is_at_type_start() && !newline_before_type;
+            // Field type - check if we're at a valid type start
+            // If there was no colon, it must be on the same line
+            let has_type = p.is_at_type_start() && (!newline_before_type || has_colon);
             if has_type {
                 p.parse_type();
 
-                // Optional field attributes (@alias, @description, @assert, etc.)
+                // Optional field attributes (@alias, @description, @skip, etc.)
+                // `parse_type` has already consumed all the "field" attributes that aren't field-related
                 while p.at(TokenKind::At) && !p.at(TokenKind::AtAt) {
                     p.parse_field_attribute();
                 }
@@ -1862,6 +2052,7 @@ impl<'a> Parser<'a> {
                     p.error(format!("field '{name}' is missing a type annotation"), span);
                 }
             }
+            // TODO: once we decide which, parse optional comma or semicolon
         });
     }
 
@@ -1910,12 +2101,16 @@ impl<'a> Parser<'a> {
             // Return type
             if p.eat(TokenKind::Arrow) {
                 p.parse_type();
-                // Optional attributes on return type (e.g., @check)
-                while p.at(TokenKind::At) && !p.at(TokenKind::AtAt) {
-                    p.parse_field_attribute();
-                }
             } else {
                 p.error_unexpected_token("return type (->)".to_string());
+            }
+
+            // Optional throws clause (BEP-007)
+            if p.at(TokenKind::Throws) {
+                p.with_node(SyntaxKind::THROWS_CLAUSE, |p| {
+                    p.bump(); // throws
+                    p.parse_type();
+                });
             }
 
             // Body
@@ -1958,23 +2153,18 @@ impl<'a> Parser<'a> {
                 p.error_unexpected_token("parameter name".to_string());
             }
 
-            // Type annotation - supports both "name: type" and "name type" syntax
+            // Type annotation - requires "name: type" syntax
             // 'self' parameter does not have a type annotation
             if is_self {
                 // No type annotation for self
             } else if p.eat(TokenKind::Colon) {
-                // With colon: "name: type"
                 p.parse_type();
-            } else if p.at(TokenKind::Word) {
-                // Without colon: "name type" (whitespace-separated)
-                p.parse_type();
+            } else if p.is_at_type_start() {
+                // Heuristic for if they're trying to do a type annotation without a colon
+                p.error_unexpected_token("':'".to_string());
+                p.parse_type(); // Parse the type anyway, so errors don't cascade
             } else {
                 p.error_unexpected_token("type annotation".to_string());
-            }
-
-            // Optional attributes on parameter (e.g., @assert, @check)
-            while p.at(TokenKind::At) && !p.at(TokenKind::AtAt) {
-                p.parse_field_attribute();
             }
         });
     }
@@ -2015,6 +2205,10 @@ impl<'a> Parser<'a> {
                 | TokenKind::If
                 | TokenKind::While
                 | TokenKind::For
+                | TokenKind::Throw
+                | TokenKind::Catch
+                | TokenKind::CatchAll
+                | TokenKind::Assert
                     if brace_depth == 1 =>
                 {
                     return false;
@@ -2099,6 +2293,9 @@ impl<'a> Parser<'a> {
         self.with_node(SyntaxKind::CLIENT_FIELD, |p| {
             p.expect(TokenKind::Client);
 
+            // Optional colon
+            p.eat(TokenKind::Colon);
+
             // Client name can be:
             // - A simple identifier: MyClient
             // - A quoted string: "openai/gpt-4o"
@@ -2128,6 +2325,9 @@ impl<'a> Parser<'a> {
             } else {
                 p.error_unexpected_token("'prompt' keyword".to_string());
             }
+
+            // Optional colon
+            p.eat(TokenKind::Colon);
 
             // Prompt value (usually a raw string)
             if !p.parse_any_string() {
@@ -2184,6 +2384,8 @@ impl<'a> Parser<'a> {
             self.parse_break_stmt();
         } else if self.at(TokenKind::Continue) {
             self.parse_continue_stmt();
+        } else if self.at(TokenKind::Throw) {
+            self.parse_throw_stmt();
         } else if self.at(TokenKind::Assert) {
             self.parse_assert_stmt();
         } else {
@@ -2265,6 +2467,34 @@ impl<'a> Parser<'a> {
         });
     }
 
+    fn parse_throw_stmt(&mut self) {
+        self.with_node(SyntaxKind::THROW_STMT, |p| {
+            // Parse as a full expression so `throw x catch (...)` is handled
+            // as one throw statement with catch attached to the throw.
+            p.parse_expr();
+            p.eat(TokenKind::Semicolon);
+        });
+    }
+
+    fn parse_throw_expr(&mut self) {
+        self.with_node(SyntaxKind::THROW_EXPR, |p| {
+            p.expect(TokenKind::Throw);
+
+            // Throw requires a payload expression.
+            if p.at(TokenKind::Semicolon) || p.at(TokenKind::Comma) || p.at(TokenKind::RBrace) {
+                p.error_unexpected_token("expression after 'throw'".to_string());
+                return;
+            }
+
+            if p.at_end() {
+                p.error_unexpected_token("expression after 'throw'".to_string());
+                return;
+            }
+
+            p.parse_expr_bp_no_catch(0);
+        });
+    }
+
     fn parse_assert_stmt(&mut self) {
         self.with_node(SyntaxKind::ASSERT_STMT, |p| {
             p.expect(TokenKind::Assert);
@@ -2322,6 +2552,10 @@ impl<'a> Parser<'a> {
             if p.at(TokenKind::LParen) {
                 p.bump(); // (
                 p.parse_expr();
+                // Optional type annotation: match (expr : Type)
+                if p.eat(TokenKind::Colon) {
+                    p.parse_type();
+                }
                 p.expect(TokenKind::RParen);
             } else {
                 p.error_unexpected_token("'(' after 'match'".to_string());
@@ -2467,12 +2701,16 @@ impl<'a> Parser<'a> {
                 self.bump(); // First identifier
 
                 if self.at(TokenKind::Dot) {
-                    // Enum variant pattern: Ident.Ident
-                    self.bump(); // .
-                    if self.at(TokenKind::Word) {
-                        self.bump(); // variant name
-                    } else {
-                        self.error_unexpected_token("enum variant name after '.'".to_string());
+                    // Dotted path pattern: Ident.Ident or Ident.Ident.Ident...
+                    // (e.g., Status.Active or baml.llm.ClientType.Primitive)
+                    while self.at(TokenKind::Dot) {
+                        self.bump(); // .
+                        if self.at(TokenKind::Word) {
+                            self.bump(); // next segment
+                        } else {
+                            self.error_unexpected_token("identifier after '.'".to_string());
+                            break;
+                        }
                     }
                 } else if self.at(TokenKind::Colon) {
                     // Typed binding pattern: ident: Type
@@ -2498,6 +2736,161 @@ impl<'a> Parser<'a> {
             p.expect(TokenKind::If);
             p.parse_expr();
         });
+    }
+
+    fn at_catch_clause_start(&self) -> bool {
+        self.at(TokenKind::Catch) || self.at(TokenKind::CatchAll)
+    }
+
+    fn parse_catch_expr(&mut self, expr_start: usize) {
+        let lhs_start = self.find_previous_expr_start_after(expr_start);
+        self.wrap_events_in_node(lhs_start, SyntaxKind::CATCH_EXPR);
+        while self.at_catch_clause_start() {
+            self.parse_catch_clause();
+        }
+        self.finish_node();
+    }
+
+    fn parse_catch_clause(&mut self) {
+        self.with_node(SyntaxKind::CATCH_CLAUSE, |p| {
+            if p.at_catch_clause_start() {
+                p.bump();
+            } else {
+                p.error_unexpected_token("catch clause keyword".to_string());
+                return;
+            }
+
+            if !p.expect(TokenKind::LParen) {
+                return;
+            }
+            p.parse_catch_pattern();
+            p.expect(TokenKind::RParen);
+
+            if !p.at(TokenKind::LBrace) {
+                p.error_unexpected_token("catch clause body".to_string());
+                return;
+            }
+
+            p.bump(); // {
+
+            if p.at(TokenKind::RBrace) {
+                p.error_unexpected_token("at least one catch arm".to_string());
+            } else {
+                p.parse_catch_arm();
+                while !p.at(TokenKind::RBrace) && !p.at_end() {
+                    if p.at_top_level_keyword() {
+                        break;
+                    }
+                    p.parse_catch_arm();
+                }
+            }
+
+            p.expect(TokenKind::RBrace);
+        });
+    }
+
+    fn parse_catch_arm(&mut self) {
+        self.with_node(SyntaxKind::CATCH_ARM, |p| {
+            p.parse_catch_pattern();
+
+            if p.at(TokenKind::FatArrow) {
+                p.bump(); // =>
+            } else {
+                p.error_unexpected_token("'=>' after catch pattern".to_string());
+                p.recover_catch_arm();
+                return;
+            }
+
+            if p.at(TokenKind::LBrace) {
+                p.parse_block_expr();
+            } else {
+                p.parse_expr();
+            }
+
+            p.eat(TokenKind::Comma);
+        });
+    }
+
+    fn parse_catch_pattern(&mut self) {
+        self.with_node(SyntaxKind::CATCH_PATTERN, |p| {
+            p.parse_pattern_element();
+            while p.at(TokenKind::Pipe) {
+                p.bump(); // |
+                p.parse_pattern_element();
+            }
+        });
+    }
+
+    fn recover_catch_arm(&mut self) {
+        while !self.at_end() {
+            if self.at(TokenKind::RBrace) {
+                break;
+            }
+            if self.eat(TokenKind::Comma) {
+                break;
+            }
+            if self.looks_like_catch_arm_start() {
+                break;
+            }
+            self.bump();
+        }
+    }
+
+    fn current_non_trivia_index(&self) -> Option<usize> {
+        let mut i = self.current;
+
+        while i < self.tokens.len() {
+            let new_i = self.skip_comment_at(i);
+            if new_i != i {
+                i = new_i;
+                continue;
+            }
+
+            let kind = self.tokens[i].kind;
+            if self.is_basic_trivia(kind) {
+                i += 1;
+                continue;
+            }
+
+            return Some(i);
+        }
+
+        None
+    }
+
+    fn looks_like_catch_arm_start(&self) -> bool {
+        let mut i = self.current_non_trivia_index().unwrap_or(self.current);
+        let mut scanned = 0usize;
+
+        while i < self.tokens.len() && scanned < 64 {
+            let new_i = self.skip_comment_at(i);
+            if new_i != i {
+                i = new_i;
+                continue;
+            }
+
+            let kind = self.tokens[i].kind;
+            if self.is_basic_trivia(kind) {
+                i += 1;
+                continue;
+            }
+
+            if matches!(
+                kind,
+                TokenKind::RBrace | TokenKind::Comma | TokenKind::Semicolon
+            ) {
+                return false;
+            }
+
+            if kind == TokenKind::FatArrow {
+                return true;
+            }
+
+            i += 1;
+            scanned += 1;
+        }
+
+        false
     }
 
     fn parse_while_stmt(&mut self) {
@@ -2669,6 +3062,17 @@ impl<'a> Parser<'a> {
         self.parse_expr_bp(0);
     }
 
+    /// Parse an expression where postfix `catch` must not bind to the payload.
+    ///
+    /// Used by prefix expression forms (e.g. `throw`) whose payload should not
+    /// consume a trailing `catch` clause.  For example, `throw x catch (...)`
+    /// must parse as `(throw x) catch (...)`, not `throw (x catch (...))`.
+    fn parse_expr_bp_no_catch(&mut self, min_bp: u8) {
+        self.suppress_catch_depth += 1;
+        self.parse_expr_bp(min_bp);
+        self.suppress_catch_depth -= 1;
+    }
+
     /// Parse expression with binding power (Pratt parsing)
     fn parse_expr_bp(&mut self, min_bp: u8) {
         // Mark the start of this expression to prevent wrapping earlier tokens
@@ -2692,7 +3096,10 @@ impl<'a> Parser<'a> {
             }
 
             // Check for special cases first
-            if op == TokenKind::Less && self.looks_like_generic_args() {
+            if self.suppress_catch_depth == 0 && self.at_catch_clause_start() {
+                self.parse_catch_expr(expr_start);
+                continue;
+            } else if op == TokenKind::Less && self.looks_like_generic_args() {
                 // Parse as generic arguments: foo<T>
                 let lhs_start = self.find_previous_expr_start_after(expr_start);
                 self.wrap_events_in_node(lhs_start, SyntaxKind::PATH_EXPR);
@@ -2892,6 +3299,9 @@ impl<'a> Parser<'a> {
             self.bump();
         } else if self.parse_any_string() {
             // String literal
+        } else if self.at(TokenKind::Throw) {
+            // Throw expression
+            self.parse_throw_expr();
         } else if self.at(TokenKind::Word) {
             let text = self.current().map(|t| t.text.as_str()).unwrap_or("");
             if text == "true" || text == "false" {
@@ -3043,12 +3453,12 @@ impl<'a> Parser<'a> {
             p.expect(TokenKind::Less);
 
             // Parse first type argument
-            if !p.at(TokenKind::Greater) {
+            if !p.at(TokenKind::Greater) && !p.at(TokenKind::GreaterGreater) {
                 p.parse_type();
 
                 // Parse remaining type arguments
                 while p.eat(TokenKind::Comma) {
-                    if p.at(TokenKind::Greater) {
+                    if p.at(TokenKind::Greater) || p.at(TokenKind::GreaterGreater) {
                         break; // Trailing comma
                     }
                     p.parse_type();
@@ -3069,6 +3479,12 @@ impl<'a> Parser<'a> {
                     ),
                     span,
                 );
+            }
+            for _ in 0..self.pending_greaters {
+                self.events.push(Event::Token {
+                    kind: SyntaxKind::GREATER,
+                    text: ">".to_string(),
+                });
             }
             self.pending_greaters = 0;
             self.pending_greater_span = None;
@@ -3405,6 +3821,7 @@ impl<'a> Parser<'a> {
 
             // Optional client type: <llm>
             if p.at(TokenKind::Less) {
+                p.type_args_depth += 1;
                 p.with_node(SyntaxKind::CLIENT_TYPE, |p| {
                     p.bump(); // <
                     if p.at(TokenKind::Word) {
@@ -3412,6 +3829,27 @@ impl<'a> Parser<'a> {
                     }
                     p.expect_greater(); // >
                 });
+                p.type_args_depth -= 1;
+
+                if p.pending_greaters > 0 {
+                    if let Some(span) = p.pending_greater_span {
+                        p.error(
+                            format!(
+                                "Unmatched '>' in client definition (found {} extra)",
+                                p.pending_greaters
+                            ),
+                            span,
+                        );
+                    }
+                    for _ in 0..p.pending_greaters {
+                        p.events.push(Event::Token {
+                            kind: SyntaxKind::GREATER,
+                            text: ">".to_string(),
+                        });
+                    }
+                    p.pending_greaters = 0;
+                    p.pending_greater_span = None;
+                }
             }
 
             // Client name
@@ -3457,9 +3895,9 @@ impl<'a> Parser<'a> {
                     p.parse_block_attribute();
                 } else {
                     p.parse_config_item();
+                    // Allow optional comma after config items
+                    p.eat(TokenKind::Comma);
                 }
-                // Allow optional comma between config items
-                p.eat(TokenKind::Comma);
             }
 
             p.expect(TokenKind::RBrace);
@@ -3514,6 +3952,9 @@ impl<'a> Parser<'a> {
                 return;
             }
 
+            // Optional colon
+            p.eat(TokenKind::Colon);
+
             // Config value - can be nested block or simple value
             if p.at(TokenKind::LBrace) {
                 // Nested config block
@@ -3535,6 +3976,9 @@ impl<'a> Parser<'a> {
     fn parse_type_builder_block(&mut self) {
         self.with_node(SyntaxKind::TYPE_BUILDER_BLOCK, |p| {
             p.expect(TokenKind::TypeBuilder);
+
+            // Optional colon
+            p.eat(TokenKind::Colon);
 
             if !p.expect(TokenKind::LBrace) {
                 return;
@@ -3619,20 +4063,9 @@ impl<'a> Parser<'a> {
             // - `true` / `false` (boolean literals)
             if p.looks_like_config_expression() {
                 p.parse_expr();
-                return;
-            }
-
-            // Fall back to legacy unquoted string parsing - consume tokens until delimiter
-            while !p.at_end() {
-                if p.at(TokenKind::RBrace)
-                    || p.at(TokenKind::LBrace)
-                    || p.at(TokenKind::RBracket)
-                    || p.at(TokenKind::Comma)
-                    || p.has_newline_ahead()
-                {
-                    break;
-                }
-                p.bump();
+            } else {
+                // Unquoted string: multi-word is no longer allowed
+                p.expect(TokenKind::Word);
             }
         });
     }
@@ -3645,19 +4078,25 @@ impl<'a> Parser<'a> {
             return true;
         }
 
-        // Block strings start with #" - check for both tokens
+        // Block strings start with #", ##", etc.
         // (Just # alone like `#helloworld` is a legacy unquoted string)
         if self.at(TokenKind::Hash) {
-            if let Some(next) = self.peek(1) {
-                if next.kind == TokenKind::Quote {
-                    return true;
-                }
+            let num_hashes = self.count_consecutive_hashes();
+            if let Some(next) = self.find_token_after_hashes(num_hashes) {
+                return self.tokens[next].kind == TokenKind::Quote;
             }
             return false;
         }
 
         // Number literals
         if self.at(TokenKind::IntegerLiteral) || self.at(TokenKind::FloatLiteral) {
+            return true;
+        }
+        if self.at(TokenKind::Minus)
+            && self.peek(1).is_some_and(|t| {
+                matches!(t.kind, TokenKind::IntegerLiteral | TokenKind::FloatLiteral)
+            })
+        {
             return true;
         }
 
@@ -3878,10 +4317,13 @@ impl<'a> Parser<'a> {
             // Type definition
             p.parse_type();
 
-            // Optional attributes
+            // Optional attributes (not including those taken by the type)
             while p.at(TokenKind::At) && !p.at(TokenKind::AtAt) {
                 p.parse_field_attribute();
             }
+
+            // Optional semicolon
+            p.eat(TokenKind::Semicolon);
         });
     }
 }
@@ -3933,16 +4375,426 @@ fn parse_impl(tokens: &[Token], cache: Option<&mut NodeCache>) -> (GreenNode, Ve
     }
 
     while parser.current < parser.tokens.len() {
-        let token = &parser.tokens[parser.current];
-        let kind = token_kind_to_syntax_kind(token.kind);
-        parser.events.push(Event::Token {
-            kind,
-            text: token.text.clone(),
-        });
-        parser.current += 1;
+        if parser.at_header_comment_start() {
+            parser.consume_header_comment();
+        } else if parser.at_line_comment_start() {
+            parser.consume_line_comment();
+        } else if parser.at_block_comment_start() {
+            parser.consume_block_comment();
+        } else {
+            let token = &parser.tokens[parser.current];
+            let kind = token_kind_to_syntax_kind(token.kind);
+            parser.events.push(Event::Token {
+                kind,
+                text: token.text.clone(),
+            });
+            parser.current += 1;
+        }
     }
 
     parser.finish_node();
 
     parser.build_tree(cache)
+}
+
+#[cfg(test)]
+mod tests {
+    use baml_base::FileId;
+    use baml_compiler_lexer::lex_lossless;
+    use baml_compiler_syntax::{SyntaxKind, SyntaxNode};
+
+    use super::{ParseError, parse_file};
+
+    fn parse_source(source: &str) -> (SyntaxNode, Vec<ParseError>) {
+        let tokens = lex_lossless(source, FileId::new(0));
+        let (green, errors) = parse_file(&tokens);
+        (SyntaxNode::new_root(green), errors)
+    }
+
+    fn assert_no_errors(errors: &[ParseError]) {
+        assert!(
+            errors.is_empty(),
+            "expected no parse errors, got: {errors:#?}"
+        );
+    }
+
+    #[test]
+    fn error_on_parameter_type_without_colon() {
+        // When the user writes `x int` instead of `x: int`, the parser should
+        // report a missing ':' error but still parse the type to avoid cascading errors.
+        let source = r#"
+function Demo(x int) -> int {
+  x
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+
+        // Should report a missing ':' error
+        assert!(
+            errors.iter().any(|error| {
+                matches!(
+                    error,
+                    ParseError::UnexpectedToken { expected, .. }
+                        if expected == "':'"
+                )
+            }),
+            "expected an error about missing ':', got: {errors:#?}"
+        );
+
+        // The parameter node should still contain the type
+        let param = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::PARAMETER)
+            .expect("expected PARAMETER node");
+        let param_text = param.text().to_string();
+        assert!(
+            param_text.contains("int"),
+            "parameter should still contain the type 'int', got: {param_text:?}"
+        );
+    }
+
+    #[test]
+    fn error_on_parameter_parenthesized_type_without_colon() {
+        // When the user writes `x (int | string)` instead of `x: (int | string)`,
+        let source = r#"
+function Demo(x (int | string)) -> int {
+  1
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+
+        assert!(
+            errors.iter().any(|error| {
+                matches!(
+                    error,
+                    ParseError::UnexpectedToken { expected, .. }
+                        if expected == "':'"
+                )
+            }),
+            "expected an error about missing ':', got: {errors:#?}"
+        );
+
+        let param = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::PARAMETER)
+            .expect("expected PARAMETER node");
+        let param_text = param.text().to_string();
+        assert!(
+            param_text.contains("int"),
+            "parameter should still contain parsed type, got: {param_text:?}"
+        );
+    }
+
+    #[test]
+    fn error_on_parameter_string_literal_type_without_colon() {
+        // When the user writes `x "hello"` instead of `x: "hello"`,
+        let source = r#"
+function Demo(x "hello") -> int {
+  1
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+
+        assert!(
+            errors.iter().any(|error| {
+                matches!(
+                    error,
+                    ParseError::UnexpectedToken { expected, .. }
+                        if expected == "':'"
+                )
+            }),
+            "expected an error about missing ':', got: {errors:#?}"
+        );
+
+        let param = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::PARAMETER)
+            .expect("expected PARAMETER node");
+        let param_text = param.text().to_string();
+        assert!(
+            param_text.contains("hello"),
+            "parameter should still contain parsed type, got: {param_text:?}"
+        );
+    }
+
+    #[test]
+    fn error_on_parameter_raw_string_type_without_colon() {
+        // When the user writes `x #"hello"#` instead of `x: #"hello"#`,
+        let source = r##"
+function Demo(x #"hello"#) -> int {
+  1
+}
+"##;
+
+        let (root, errors) = parse_source(source);
+
+        assert!(
+            errors.iter().any(|error| {
+                matches!(
+                    error,
+                    ParseError::UnexpectedToken { expected, .. }
+                        if expected == "':'"
+                )
+            }),
+            "expected an error about missing ':', got: {errors:#?}"
+        );
+
+        let param = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::PARAMETER)
+            .expect("expected PARAMETER node");
+        let param_text = param.text().to_string();
+        assert!(
+            param_text.contains("hello"),
+            "parameter should still contain parsed type, got: {param_text:?}"
+        );
+    }
+
+    #[test]
+    fn error_on_parameter_integer_literal_type_without_colon() {
+        // When the user writes `x 200` instead of `x: 200`,
+        let source = r#"
+function Demo(x 200) -> int {
+  1
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+
+        assert!(
+            errors.iter().any(|error| {
+                matches!(
+                    error,
+                    ParseError::UnexpectedToken { expected, .. }
+                        if expected == "':'"
+                )
+            }),
+            "expected an error about missing ':', got: {errors:#?}"
+        );
+
+        let param = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::PARAMETER)
+            .expect("expected PARAMETER node");
+        let param_text = param.text().to_string();
+        assert!(
+            param_text.contains("200"),
+            "parameter should still contain parsed type, got: {param_text:?}"
+        );
+    }
+
+    #[test]
+    fn error_on_parameter_float_literal_type_without_colon() {
+        // When the user writes `x 3.14` instead of `x: 3.14`,
+        let source = r#"
+function Demo(x 3.14) -> int {
+  1
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+
+        assert!(
+            errors.iter().any(|error| {
+                matches!(
+                    error,
+                    ParseError::UnexpectedToken { expected, .. }
+                        if expected == "':'"
+                )
+            }),
+            "expected an error about missing ':', got: {errors:#?}"
+        );
+
+        let param = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::PARAMETER)
+            .expect("expected PARAMETER node");
+        let param_text = param.text().to_string();
+        assert!(
+            param_text.contains("3.14"),
+            "parameter should still contain parsed type, got: {param_text:?}"
+        );
+    }
+
+    #[test]
+    fn parses_chained_catch_clauses_with_typed_arms() {
+        let source = r#"
+function Demo() -> int {
+  foo() catch (e) {
+    _ => { throw e; }
+  } catch (e2) {
+    _: ValidationError => { 1 }
+    other => { throw other; }
+  } catch (e3) {
+    _: Panic => { throw e3; }
+    other => 2
+  }
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+        assert_no_errors(&errors);
+
+        let catch_expr = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::CATCH_EXPR)
+            .expect("expected CATCH_EXPR node");
+
+        let child_kinds: Vec<_> = catch_expr.children().map(|n| n.kind()).collect();
+        assert_eq!(child_kinds[0], SyntaxKind::CALL_EXPR);
+        assert_eq!(child_kinds[1], SyntaxKind::CATCH_CLAUSE);
+        assert_eq!(child_kinds[2], SyntaxKind::CATCH_CLAUSE);
+        assert_eq!(child_kinds[3], SyntaxKind::CATCH_CLAUSE);
+
+        let clauses: Vec<_> = catch_expr
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::CATCH_CLAUSE)
+            .collect();
+        assert_eq!(clauses.len(), 3);
+
+        let keywords: Vec<_> = clauses
+            .iter()
+            .filter_map(|clause| {
+                clause
+                    .children_with_tokens()
+                    .filter_map(rowan::NodeOrToken::into_token)
+                    .find(|t| t.kind() == SyntaxKind::KW_CATCH)
+                    .map(|t| t.kind())
+            })
+            .collect();
+
+        assert_eq!(
+            keywords,
+            vec![
+                SyntaxKind::KW_CATCH,
+                SyntaxKind::KW_CATCH,
+                SyntaxKind::KW_CATCH,
+            ]
+        );
+
+        let second_clause_arms: Vec<_> = clauses[1]
+            .children()
+            .filter(|n| n.kind() == SyntaxKind::CATCH_ARM)
+            .collect();
+        assert_eq!(second_clause_arms.len(), 2);
+        assert!(
+            second_clause_arms[0]
+                .text()
+                .to_string()
+                .contains("ValidationError")
+        );
+        assert!(second_clause_arms[1].text().to_string().contains("other"));
+    }
+
+    #[test]
+    fn parses_throw_statement_and_throw_expression_in_catch_arm() {
+        let source = r#"
+function Demo() -> int {
+  throw err;
+  foo() catch (e) {
+    other => throw other
+  }
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+        assert_no_errors(&errors);
+
+        let throw_stmt = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::THROW_STMT)
+            .expect("expected THROW_STMT node");
+        assert!(
+            throw_stmt
+                .children()
+                .any(|child| child.kind() == SyntaxKind::THROW_EXPR)
+        );
+
+        let throw_expr_count = root
+            .descendants()
+            .filter(|n| n.kind() == SyntaxKind::THROW_EXPR)
+            .count();
+        assert_eq!(throw_expr_count, 2);
+    }
+
+    #[test]
+    fn reports_missing_fat_arrow_in_catch_arm_and_recovers_next_arm() {
+        let source = r#"
+function Demo() -> int {
+  foo() catch (e) {
+    _: ValidationError
+    other => 1
+  }
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+
+        assert!(errors.iter().any(|error| {
+            matches!(
+                error,
+                ParseError::UnexpectedToken { expected, .. }
+                    if expected == "'=>' after catch pattern"
+            )
+        }));
+
+        let arm_count = root
+            .descendants()
+            .filter(|n| n.kind() == SyntaxKind::CATCH_ARM)
+            .count();
+        assert_eq!(arm_count, 2);
+    }
+
+    #[test]
+    fn parses_catch_on_throw_expression_with_expected_binding() {
+        let source = r#"
+function Demo() -> int {
+  throw 1 catch (e) {
+    _ => 1
+  }
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+        assert_no_errors(&errors);
+
+        let catch_expr = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::CATCH_EXPR)
+            .expect("expected CATCH_EXPR node");
+        let child_kinds: Vec<_> = catch_expr.children().map(|n| n.kind()).collect();
+        assert_eq!(child_kinds[0], SyntaxKind::THROW_EXPR);
+        assert_eq!(child_kinds[1], SyntaxKind::CATCH_CLAUSE);
+    }
+
+    #[test]
+    fn parses_return_throw_catch_expression() {
+        let source = r#"
+function Demo() -> int {
+  return throw 1 catch (e) {
+    _ => 2
+  };
+}
+"#;
+
+        let (root, errors) = parse_source(source);
+        assert_no_errors(&errors);
+
+        let return_stmt = root
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::RETURN_STMT)
+            .expect("expected RETURN_STMT node");
+
+        let catch_expr = return_stmt
+            .descendants()
+            .find(|n| n.kind() == SyntaxKind::CATCH_EXPR)
+            .expect("expected CATCH_EXPR under RETURN_STMT");
+
+        let child_kinds: Vec<_> = catch_expr.children().map(|n| n.kind()).collect();
+        assert_eq!(child_kinds[0], SyntaxKind::THROW_EXPR);
+        assert_eq!(child_kinds[1], SyntaxKind::CATCH_CLAUSE);
+    }
 }

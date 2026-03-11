@@ -1,17 +1,16 @@
 ---
-source: target/debug/build/baml_tests-e89f2b4de47549a5/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 === TYPE INFERENCE ===
   Function Bar:
-    Return: Literal(Int(1))
+    Return: Literal(Int(1), TyAttr(None))
     Errors:
       - Unknown type unknown_param_type
   Function Foo:
-    Return: Literal(Int(1))
+    Return: Literal(Int(1), TyAttr(None))
     Errors:
       - Unknown type blah
   Function Baz:
-    Return: Null
+    Return: Null { attr: TyAttr(None) }
     Errors:
       - Unknown type unknown_optional

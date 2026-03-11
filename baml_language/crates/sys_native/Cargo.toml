@@ -6,13 +6,19 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = [  ]
+native-tls = [ "reqwest/native-tls" ]
+rustls = [ "reqwest/rustls" ]
+bundle-http = [ "dep:reqwest" ]
+
 [dependencies]
 bex_heap = { workspace = true }
 bex_resource_types = { workspace = true }
 sys_types = { workspace = true }
 indexmap = { workspace = true }
-reqwest = { workspace = true, features = [ "rustls" ] }
-tokio = { workspace = true, features = [ "sync", "fs", "net", "process", "io-util" ] }
+reqwest = { workspace = true, features = [ "rustls" ], optional = true }
+tokio = { workspace = true, features = [ "sync", "fs", "net", "process", "io-util", "time" ] }
 
 [lints]
 workspace = true

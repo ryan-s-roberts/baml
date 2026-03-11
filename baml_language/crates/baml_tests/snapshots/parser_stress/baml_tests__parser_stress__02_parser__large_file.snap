@@ -1,6 +1,5 @@
 ---
-source: target/debug/build/baml_tests-3c66388e75d3efcb/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 === SYNTAX TREE ===
 SOURCE_FILE
@@ -41111,6 +41110,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41144,6 +41144,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41177,6 +41178,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41210,6 +41212,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41243,6 +41246,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41276,6 +41280,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41309,6 +41314,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41342,6 +41348,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41375,6 +41382,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41408,6 +41416,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41441,6 +41450,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41474,6 +41484,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41507,6 +41518,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41540,6 +41552,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41573,6 +41586,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41606,6 +41620,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41639,6 +41654,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41672,6 +41688,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41705,6 +41722,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41738,6 +41756,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41771,6 +41790,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41804,6 +41824,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41837,6 +41858,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41870,6 +41892,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41903,6 +41926,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41936,6 +41960,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -41969,6 +41994,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42002,6 +42028,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42035,6 +42062,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42068,6 +42096,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42101,6 +42130,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42134,6 +42164,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42167,6 +42198,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42200,6 +42232,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42233,6 +42266,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42266,6 +42300,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42299,6 +42334,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42332,6 +42368,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42365,6 +42402,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42398,6 +42436,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42431,6 +42470,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42464,6 +42504,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42497,6 +42538,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42530,6 +42572,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42563,6 +42606,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42596,6 +42640,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42629,6 +42674,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42662,6 +42708,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42695,6 +42742,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42728,6 +42776,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42761,6 +42810,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42794,6 +42844,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42827,6 +42878,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42860,6 +42912,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42893,6 +42946,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42926,6 +42980,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42959,6 +43014,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -42992,6 +43048,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43025,6 +43082,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43058,6 +43116,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43091,6 +43150,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43124,6 +43184,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43157,6 +43218,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43190,6 +43252,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43223,6 +43286,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43256,6 +43320,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43289,6 +43354,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43322,6 +43388,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43355,6 +43422,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43388,6 +43456,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43421,6 +43490,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43454,6 +43524,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43487,6 +43558,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43520,6 +43592,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43553,6 +43626,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43586,6 +43660,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43619,6 +43694,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43652,6 +43728,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43685,6 +43762,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43718,6 +43796,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43751,6 +43830,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43784,6 +43864,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43817,6 +43898,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43850,6 +43932,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43883,6 +43966,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43916,6 +44000,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43949,6 +44034,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -43982,6 +44068,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44015,6 +44102,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44048,6 +44136,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44081,6 +44170,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44114,6 +44204,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44147,6 +44238,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44180,6 +44272,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44213,6 +44306,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44246,6 +44340,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44279,6 +44374,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44312,6 +44408,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44345,6 +44442,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"
@@ -44378,6 +44476,7 @@ SOURCE_FILE
       L_PAREN "("
       PARAMETER
         WORD "input"
+        COLON ":"
         TYPE_EXPR "string"
           WORD "string"
       R_PAREN ")"

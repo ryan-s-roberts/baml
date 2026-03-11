@@ -1,3 +1,12 @@
+#![allow(
+    clippy::collapsible_if,
+    clippy::for_kv_map,
+    clippy::len_zero,
+    clippy::needless_borrow,
+    clippy::redundant_closure,
+    dead_code
+)]
+
 mod app;
 mod compiler;
 mod ui;
@@ -18,11 +27,13 @@ fn parse_phase(name: &str) -> Option<CompilerPhase> {
         "hir" => Some(CompilerPhase::Hir),
         "thir" => Some(CompilerPhase::Thir),
         "typedir" | "typed_ir" | "typed-ir" => Some(CompilerPhase::TypedIr),
+        "controlflow" | "control_flow" | "control-flow" => Some(CompilerPhase::ControlFlow),
         "mir" => Some(CompilerPhase::Mir),
         "diagnostics" => Some(CompilerPhase::Diagnostics),
         "codegen" => Some(CompilerPhase::Codegen),
         "vmrunner" | "vm_runner" | "vm-runner" => Some(CompilerPhase::VmRunner),
         "metrics" => Some(CompilerPhase::Metrics),
+        "formatter" => Some(CompilerPhase::Formatter),
         _ => None,
     }
 }
@@ -49,7 +60,7 @@ struct Args {
     no_hot_reload: bool,
 
     /// Initial compiler phase to display (used to restore view after restart)
-    /// Values: lexer, parser, ast, hir, thir, typedir, mir, diagnostics, codegen, vmrunner, metrics
+    /// Values: lexer, parser, ast, hir, thir, typedir, mir, diagnostics, codegen, vmrunner, metrics, formatter
     #[arg(long = "phase", hide = true)]
     phase: Option<String>,
 }
@@ -239,9 +250,11 @@ fn run_increment_test(before: &Path, after: &Path) -> Result<()> {
         CompilerPhase::Hir,
         CompilerPhase::Thir,
         CompilerPhase::TypedIr,
+        CompilerPhase::ControlFlow,
         CompilerPhase::Mir,
         CompilerPhase::Diagnostics,
         CompilerPhase::Codegen,
+        CompilerPhase::Formatter,
     ] {
         println!("\n### {} ###", phase.name());
         let annotated = compiler.get_annotated_output(phase);

@@ -1,6 +1,5 @@
 ---
-source: target/debug/build/baml_tests-0fbde5d1c173768c/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 Slash "/"
 Slash "/"
@@ -15,6 +14,7 @@ Function "function"
 Word "Ambiguous"
 LParen "("
 Word "input"
+Colon ":"
 Word "string"
 RParen ")"
 Arrow "->"
@@ -61,6 +61,7 @@ Function "function"
 Word "AnotherLLM"
 LParen "("
 Word "input"
+Colon ":"
 Word "string"
 RParen ")"
 Arrow "->"

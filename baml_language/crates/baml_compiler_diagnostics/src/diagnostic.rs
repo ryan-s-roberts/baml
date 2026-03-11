@@ -64,6 +64,8 @@ pub enum DiagnosticId {
     // HIR diagnostics (E0012-E0027)
     DuplicateField,
     DuplicateVariant,
+    DuplicateMethod,
+    DuplicateBinding,
     DuplicateAttribute,
     UnknownAttribute,
     InvalidAttributeContext,
@@ -88,10 +90,18 @@ pub enum DiagnosticId {
     AllowedRolesEmpty,
     /// `allowed_roles` values must be strings.
     AllowedRoleNotString,
+    /// Composite client has empty strategy.
+    EmptyStrategy,
+    /// Unknown retry policy reference.
+    UnknownRetryPolicy,
+    /// Strategy array element is not a valid client name.
+    InvalidStrategyElement,
 
     // Pattern matching errors (E0062-E0066)
     NonExhaustiveMatch,
     UnreachableArm,
+    NonExhaustiveCatch,
+    UnreachableCatchArm,
     UnknownEnumVariant,
     WatchOnNonVariable,
     WatchOnUnwatchedVariable,
@@ -129,6 +139,9 @@ pub enum DiagnosticId {
     IncompleteDynamicDefinition,
     TypeBuilderSyntaxError,
 
+    // Reserved prefix diagnostics
+    ReservedStreamPrefix,
+
     // Cycle detection diagnostics (E0068-E0069)
     AliasCycle,
     ClassCycle,
@@ -153,8 +166,18 @@ pub enum DiagnosticId {
     JinjaInvalidSyntax,
     JinjaInvalidTest,
 
+    // Catch binding errors (E0093)
+    InvalidCatchBindingType,
+
+    // Throws contract errors (E0096-E0097)
+    ThrowsContractViolation,
+    ThrowsContractExtraneous,
+
     // VIR lowering errors (E0089)
     LoweringError,
+
+    // Removed feature errors (E0098)
+    InstanceofRemoved,
 }
 
 impl DiagnosticId {
@@ -183,6 +206,8 @@ impl DiagnosticId {
             // HIR diagnostics
             DiagnosticId::DuplicateField => "E0012",
             DiagnosticId::DuplicateVariant => "E0013",
+            DiagnosticId::DuplicateMethod => "E0093",
+            DiagnosticId::DuplicateBinding => "E0094",
             DiagnosticId::DuplicateAttribute => "E0014",
             DiagnosticId::UnknownAttribute => "E0015",
             DiagnosticId::InvalidAttributeContext => "E0016",
@@ -202,10 +227,15 @@ impl DiagnosticId {
             | DiagnosticId::RemapRoleNotAllowed
             | DiagnosticId::AllowedRolesEmpty
             | DiagnosticId::AllowedRoleNotString => "E0044",
+            DiagnosticId::EmptyStrategy => "E0090",
+            DiagnosticId::UnknownRetryPolicy => "E0091",
+            DiagnosticId::InvalidStrategyElement => "E0092",
 
             // Pattern matching errors
             DiagnosticId::NonExhaustiveMatch => "E0062",
             DiagnosticId::UnreachableArm => "E0063",
+            DiagnosticId::NonExhaustiveCatch => "E0094",
+            DiagnosticId::UnreachableCatchArm => "E0095",
             DiagnosticId::UnknownEnumVariant => "E0064",
             DiagnosticId::WatchOnNonVariable => "E0065",
             DiagnosticId::WatchOnUnwatchedVariable => "E0066",
@@ -267,8 +297,21 @@ impl DiagnosticId {
             DiagnosticId::JinjaInvalidSyntax => "E0086",
             DiagnosticId::JinjaInvalidTest => "E0087",
 
+            // Reserved prefix errors
+            DiagnosticId::ReservedStreamPrefix => "E0100",
+
+            // Catch binding errors
+            DiagnosticId::InvalidCatchBindingType => "E0093",
+
+            // Throws contract errors
+            DiagnosticId::ThrowsContractViolation => "E0096",
+            DiagnosticId::ThrowsContractExtraneous => "E0097",
+
             // VIR lowering errors
             DiagnosticId::LoweringError => "E0089",
+
+            // Removed feature errors
+            DiagnosticId::InstanceofRemoved => "E0098",
         }
     }
 }
@@ -531,6 +574,7 @@ mod tests {
             DiagnosticId::UnexpectedToken,
             DiagnosticId::DuplicateName,
             DiagnosticId::LoweringError,
+            DiagnosticId::InstanceofRemoved,
         ];
 
         for id in ids {

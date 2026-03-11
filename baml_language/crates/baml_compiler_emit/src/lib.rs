@@ -21,7 +21,11 @@
 
 mod analysis;
 mod emit;
+mod pull_semantics;
+mod stack_carry;
+mod verifier;
 
+pub use analysis::OptLevel;
 use bex_vm_types::ObjectPool;
 pub(crate) use emit::compile_mir_function;
 
@@ -46,7 +50,7 @@ pub(crate) struct MirCodegenContext<'ctx, 'obj> {
 
 use std::collections::{HashMap, HashSet};
 
-use baml_base::{Name, SourceFile, Span};
+use baml_base::{FieldAttr, Name, SourceFile, Span};
 use baml_compiler_hir::{
     self, ItemId, function_body, function_qualified_name, function_signature,
     function_signature_source_map, template_string_body, template_string_signature,
@@ -59,6 +63,25 @@ pub use bex_vm_types::{
     type_tags,
 };
 
+// ============================================================================
+// Database Trait
+// ============================================================================
+
+/// Salsa database for the emit phase: compiles MIR to bytecode.
+/// Extends `baml_compiler_mir::Db` so a single `Db` can run the full pipeline through codegen.
+#[salsa::db]
+pub trait Db: baml_compiler_mir::Db {}
+
+/// Options for controlling bytecode compilation.
+#[derive(Debug, Clone, Copy)]
+pub struct CompileOptions {
+    /// Include test cases in the compiled program.
+    ///
+    /// When true, `test { ... }` blocks are compiled into `Program::test_cases`.
+    /// Only the CLI test runner needs this; SDK runtimes can leave it off.
+    pub emit_test_cases: bool,
+}
+
 /// Generate bytecode for all functions in a project.
 ///
 /// This is the main entry point for project-wide code generation.
@@ -66,9 +89,12 @@ pub use bex_vm_types::{
 /// lowers to MIR, and compiles to bytecode.
 ///
 /// Returns `Err` if any function contains unrecoverable errors (Missing nodes).
-pub fn generate_project_bytecode(db: &dyn baml_compiler_mir::Db) -> Result<Program, LoweringError> {
+pub fn generate_project_bytecode(
+    db: &dyn baml_compiler_mir::Db,
+    options: &CompileOptions,
+) -> Result<Program, LoweringError> {
     let project = db.project();
-    compile_files(db, project.files(db))
+    compile_files(db, project.files(db), OptLevel::One, options)
 }
 
 /// Generate bytecode for a list of source files.
@@ -79,17 +105,9 @@ pub fn generate_project_bytecode(db: &dyn baml_compiler_mir::Db) -> Result<Progr
 pub fn compile_files(
     db: &dyn baml_compiler_mir::Db,
     files: &[SourceFile],
+    opt: OptLevel,
+    options: &CompileOptions,
 ) -> Result<Program, LoweringError> {
-    // Hidden LLM builtins (not exposed to users but used by compiler-generated code)
-    // These are in the #[hide] mod llm block and not included in builtins()
-    // Format: (path, arity)
-    const HIDDEN_LLM_BUILTINS: &[(&str, usize)] = &[
-        ("baml.llm.get_jinja_template", 1),
-        ("baml.llm.build_primitive_client", 5),
-        ("baml.llm.PrimitiveClient.render_prompt", 3),
-        ("baml.llm.get_client_function", 1),
-    ];
-
     // Note: Builtin BAML files (like llm.baml) are now loaded at project setup time
     // in ProjectDatabase::set_project_root(), so they're already in the files list.
 
@@ -116,12 +134,6 @@ pub fn compile_files(
     let builtins = baml_builtins::builtins();
     for path in builtins {
         globals.insert(path.path.to_string(), global_idx);
-        global_idx += 1;
-    }
-
-    // Add hidden LLM builtins to globals
-    for (path, _) in HIDDEN_LLM_BUILTINS {
-        globals.insert((*path).to_string(), global_idx);
         global_idx += 1;
     }
 
@@ -163,13 +175,16 @@ pub fn compile_files(
             let tir_ty = baml_compiler_tir::builtins::substitute_unknown(&field.ty);
             let field_ty = baml_type::convert_tir_ty(&tir_ty, &type_aliases, &recursive_aliases)
                 .and_then(baml_type::sanitize_for_runtime)
-                .unwrap_or(baml_type::Ty::Null);
+                .unwrap_or(baml_type::Ty::Null {
+                    attr: baml_type::TyAttr::default(),
+                });
 
             fields.push(ClassField {
                 name: field.name.to_string(),
                 field_type: field_ty,
                 description: None,
                 alias: None,
+                field_attr: FieldAttr::default(),
             });
 
             // Only add public fields to field_types (for type checking)
@@ -192,6 +207,7 @@ pub fn compile_files(
             description: None,
             alias: None,
             type_tag,
+            ty_attr: baml_type::TyAttr::default(),
         });
         class_type_tag_counter += 1;
         let class_obj_idx = program.add_object(class_obj);
@@ -203,12 +219,15 @@ pub fn compile_files(
 
     // Now add user-defined classes
     for file in files {
-        let item_tree = baml_compiler_hir::file_item_tree(db, *file);
         let items_struct = baml_compiler_hir::file_items(db, *file);
         for item in items_struct.items(db) {
             if let ItemId::Class(class_loc) = item {
+                let item_tree = baml_compiler_hir::file_item_tree(db, class_loc.file(db));
                 let class = &item_tree[class_loc.id(db)];
-                let class_name = class.name.to_string();
+                // Use FQN for builtin-file classes (e.g., "baml.llm.OrchestrationStep"),
+                // short name for user classes (e.g., "MyClass").
+                let fqn = baml_compiler_hir::class_qualified_name(db, *class_loc);
+                let class_name = fqn.display();
 
                 let mut field_indices = HashMap::new();
                 let mut field_types = HashMap::new();
@@ -229,13 +248,16 @@ pub fn compile_files(
                     let runtime_ty =
                         baml_type::convert_tir_ty(&ty, &type_aliases, &recursive_aliases)
                             .and_then(baml_type::sanitize_for_runtime)
-                            .unwrap_or(baml_type::Ty::Null);
+                            .unwrap_or(baml_type::Ty::Null {
+                                attr: baml_type::TyAttr::default(),
+                            });
 
                     fields.push(ClassField {
                         name: field.name.to_string(),
                         field_type: runtime_ty,
                         description: field.description.value().cloned(),
                         alias: field.alias.value().cloned(),
+                        field_attr: FieldAttr::default(),
                     });
                 }
 
@@ -250,13 +272,14 @@ pub fn compile_files(
                     description: class.description.value().cloned(),
                     alias: class.alias.value().cloned(),
                     type_tag,
+                    ty_attr: class.ty_attr.clone(),
                 });
                 class_type_tag_counter += 1;
                 let class_obj_idx = program.add_object(class_obj);
                 class_object_indices.insert(class_name.clone(), class_obj_idx);
 
-                classes.insert(class_name, field_indices);
-                class_field_types.insert(class.name.clone(), field_types);
+                classes.insert(class_name.clone(), field_indices);
+                class_field_types.insert(Name::new(&class_name), field_types);
             }
         }
     }
@@ -268,10 +291,10 @@ pub fn compile_files(
     let mut enum_object_indices: HashMap<String, usize> = HashMap::new();
 
     for file in files {
-        let item_tree = baml_compiler_hir::file_item_tree(db, *file);
         let items_struct = baml_compiler_hir::file_items(db, *file);
         for item in items_struct.items(db) {
             if let ItemId::Enum(enum_loc) = item {
+                let item_tree = baml_compiler_hir::file_item_tree(db, enum_loc.file(db));
                 let enum_def = &item_tree[enum_loc.id(db)];
                 let enum_name = enum_def.name.to_string();
 
@@ -295,6 +318,7 @@ pub fn compile_files(
                     variants,
                     description: None, // HIR Enum doesn't carry description
                     alias: enum_def.alias.value().cloned(),
+                    ty_attr: enum_def.ty_attr.clone(),
                 });
                 let enum_obj_idx = program.add_object(enum_obj);
                 enum_object_indices.insert(enum_name.clone(), enum_obj_idx);
@@ -303,6 +327,45 @@ pub fn compile_files(
                 enum_variant_names.insert(enum_def.name.clone(), variant_name_list);
             }
         }
+    }
+
+    // Add builtin enums (e.g., baml.llm.ClientType) to the program.
+    // These are not declared in user BAML files but are needed at runtime
+    // when sys_ops return values containing builtin enum variants.
+    for builtin_enum in baml_builtins::builtin_enums() {
+        let variants: Vec<EnumVariant> = builtin_enum
+            .variants
+            .iter()
+            .map(|v| EnumVariant {
+                name: v.to_string(),
+                description: None,
+                alias: None,
+                skip: false,
+            })
+            .collect();
+        let mut variant_indices = HashMap::new();
+        for (idx, v) in builtin_enum.variants.iter().enumerate() {
+            variant_indices.insert(v.to_string(), idx);
+        }
+        let enum_obj = Object::Enum(Enum {
+            name: builtin_enum.path.to_string(),
+            variants,
+            description: None,
+            alias: None,
+            ty_attr: baml_type::TyAttr::default(),
+        });
+        let enum_obj_idx = program.add_object(enum_obj);
+        enum_object_indices.insert(builtin_enum.path.to_string(), enum_obj_idx);
+        // Use FQN as key (e.g., "baml.llm.ClientType") — matches the FQN in enum_names.
+        enum_variants.insert(builtin_enum.path.to_string(), variant_indices);
+
+        // Also add to enum_variant_names for type inference (keyed by FQN)
+        let variant_name_list: Vec<Name> = builtin_enum
+            .variants
+            .iter()
+            .map(|v| Name::new(*v))
+            .collect();
+        enum_variant_names.insert(Name::new(builtin_enum.path), variant_name_list);
     }
 
     // Add builtin functions to globals FIRST (stable indices)
@@ -320,14 +383,18 @@ pub fn compile_files(
         let tir_ty = baml_compiler_tir::builtins::substitute_unknown(&builtin.returns);
         let return_type = baml_type::convert_tir_ty(&tir_ty, &type_aliases, &recursive_aliases)
             .and_then(baml_type::sanitize_for_runtime)
-            .unwrap_or(baml_type::Ty::Null);
+            .unwrap_or(baml_type::Ty::Null {
+                attr: baml_type::TyAttr::default(),
+            });
 
         let builtin_fn = Function {
             name: builtin.path.to_string(),
             arity: builtin.arity(),
+            real_local_count: 0,
             bytecode: Bytecode::default(),
             kind,
-            locals_in_scope: Vec::new(),
+            local_names: Vec::new(),
+            debug_locals: Vec::new(),
             span: baml_base::Span::fake(),
             block_notifications: Vec::new(),
             viz_nodes: Vec::new(),
@@ -335,36 +402,7 @@ pub fn compile_files(
             param_names: Vec::new(),
             param_types: Vec::new(),
             body_meta: None,
-        };
-        let fn_obj_idx = program.add_object(Object::Function(Box::new(builtin_fn)));
-        program.add_global(ConstValue::Object(ObjectIndex::from_raw(fn_obj_idx)));
-    }
-
-    // Add hidden LLM builtins to globals (these are external functions)
-    for (path, arity) in HIDDEN_LLM_BUILTINS {
-        let sys_op =
-            sys_op_for_builtin_path(path).expect("hidden LLM builtin must have SysOp mapping");
-        let return_type = baml_builtins::find_builtin_by_path(path)
-            .map(|sig| {
-                let tir_ty = baml_compiler_tir::builtins::substitute_unknown(&sig.returns);
-                baml_type::convert_tir_ty(&tir_ty, &type_aliases, &recursive_aliases)
-                    .and_then(baml_type::sanitize_for_runtime)
-                    .unwrap_or(baml_type::Ty::Null)
-            })
-            .unwrap_or(baml_type::Ty::Null);
-        let builtin_fn = Function {
-            name: (*path).to_string(),
-            arity: *arity,
-            bytecode: Bytecode::default(),
-            kind: FunctionKind::SysOp(sys_op),
-            locals_in_scope: Vec::new(),
-            span: baml_base::Span::fake(),
-            block_notifications: Vec::new(),
-            viz_nodes: Vec::new(),
-            return_type,
-            param_names: Vec::new(),
-            param_types: Vec::new(),
-            body_meta: None,
+            trace: false,
         };
         let fn_obj_idx = program.add_object(Object::Function(Box::new(builtin_fn)));
         program.add_global(ConstValue::Object(ObjectIndex::from_raw(fn_obj_idx)));
@@ -372,6 +410,7 @@ pub fn compile_files(
 
     // Compile each user function using MIR
     for file in files {
+        let line_starts = build_line_starts(file.text(db));
         let items_struct = baml_compiler_hir::file_items(db, *file);
         for item in items_struct.items(db) {
             if let ItemId::Function(func_loc) = item {
@@ -410,21 +449,24 @@ pub fn compile_files(
                         Function {
                             name: signature.name.to_string(),
                             arity: params.len(),
+                            real_local_count: 0,
                             bytecode: Bytecode::new(),
                             kind: FunctionKind::Bytecode,
-                            locals_in_scope: vec![
-                                params
-                                    .iter()
-                                    .map(std::string::ToString::to_string)
-                                    .collect(),
-                            ],
+                            local_names: params
+                                .iter()
+                                .map(std::string::ToString::to_string)
+                                .collect(),
+                            debug_locals: Vec::new(),
                             span: baml_base::Span::fake(),
                             block_notifications: Vec::new(),
                             viz_nodes: Vec::new(),
-                            return_type: baml_type::Ty::Null,
+                            return_type: baml_type::Ty::Null {
+                                attr: baml_type::TyAttr::default(),
+                            },
                             param_names: Vec::new(),
                             param_types: Vec::new(),
                             body_meta: None,
+                            trace: false,
                         }
                     }
                     baml_compiler_hir::FunctionBody::Expr(_, _) => {
@@ -476,7 +518,7 @@ pub fn compile_files(
                             enum_variants: &enum_variants,
                             objects: &mut program.objects,
                         };
-                        compile_mir_function(&mir, ctx)
+                        compile_mir_function(&mir, &line_starts, ctx, opt)
                     }
                 };
 
@@ -485,12 +527,13 @@ pub fn compile_files(
                 compiled_fn.param_names = meta_param_names;
                 compiled_fn.param_types = meta_param_types;
 
-                // If this is an LLM function, attach prompt/client metadata
+                // If this is an LLM function, attach prompt/client metadata and enable tracing
                 if let Some(llm_meta) = baml_compiler_hir::llm_function_meta(db, *func_loc) {
                     compiled_fn.body_meta = Some(bex_vm_types::FunctionMeta::Llm {
                         prompt_template: llm_meta.prompt.text.clone(),
                         client: llm_meta.client.to_string(),
                     });
+                    compiled_fn.trace = true;
                 }
 
                 // Validate types at emit time (safety net)
@@ -553,7 +596,227 @@ pub fn compile_files(
     }
     program.template_strings_macros = template_macros.join("\n");
 
+    // --- Pass: Extract client and retry policy metadata ---
+    // First, collect all retry policies by name
+    let mut retry_policies: HashMap<String, bex_vm_types::RetryPolicyMeta> = HashMap::new();
+    for file in files {
+        let items_struct = baml_compiler_hir::file_items(db, *file);
+        for item in items_struct.items(db) {
+            if let ItemId::RetryPolicy(rp_loc) = item {
+                let item_tree = baml_compiler_hir::file_item_tree(db, rp_loc.file(db));
+                let rp = &item_tree[rp_loc.id(db)];
+                let policy_name = rp.name.to_string();
+                retry_policies.insert(
+                    policy_name.clone(),
+                    bex_vm_types::RetryPolicyMeta {
+                        max_retries: parse_retry_policy_field(
+                            &policy_name,
+                            "max_retries",
+                            rp.max_retries.as_deref(),
+                            0_i64,
+                        )?,
+                        initial_delay_ms: parse_retry_policy_field(
+                            &policy_name,
+                            "initial_delay_ms",
+                            rp.initial_delay_ms.as_deref(),
+                            0_i64,
+                        )?,
+                        multiplier: parse_retry_policy_field(
+                            &policy_name,
+                            "multiplier",
+                            rp.multiplier.as_deref(),
+                            1.0_f64,
+                        )?,
+                        max_delay_ms: parse_retry_policy_field(
+                            &policy_name,
+                            "max_delay_ms",
+                            rp.max_delay_ms.as_deref(),
+                            60_000_i64,
+                        )?,
+                    },
+                );
+            }
+        }
+    }
+
+    // Then, collect all clients with their metadata
+    for file in files {
+        let items_struct = baml_compiler_hir::file_items(db, *file);
+        for item in items_struct.items(db) {
+            if let ItemId::Client(client_loc) = item {
+                let item_tree = baml_compiler_hir::file_item_tree(db, client_loc.file(db));
+                let client = &item_tree[client_loc.id(db)];
+                let client_name = client.name.to_string();
+                let provider = client.provider.as_str();
+
+                let client_type = match provider {
+                    "fallback" => bex_vm_types::ClientBuildType::Fallback,
+                    "round-robin" => bex_vm_types::ClientBuildType::RoundRobin,
+                    _ => bex_vm_types::ClientBuildType::Primitive,
+                };
+
+                let sub_client_names: Vec<String> = client
+                    .sub_client_names
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect();
+
+                let retry_policy = client
+                    .retry_policy_name
+                    .as_ref()
+                    .and_then(|name| retry_policies.get(name.as_str()).cloned());
+
+                program.client_metadata.insert(
+                    client_name.clone(),
+                    bex_vm_types::ClientBuildMeta {
+                        client_type,
+                        sub_client_names,
+                        retry_policy,
+                        round_robin_start: client.round_robin_start,
+                    },
+                );
+            }
+        }
+    }
+
+    // --- Pass: Emit test cases (only when requested) ---
+    if options.emit_test_cases {
+        // Build a map of function name -> (param_name -> Ty) so we can
+        // annotate test arg values with their declared types.
+        let mut fn_param_types: HashMap<String, HashMap<String, baml_type::Ty>> = HashMap::new();
+        for file in files {
+            let items_struct = baml_compiler_hir::file_items(db, *file);
+            for item in items_struct.items(db) {
+                if let ItemId::Function(func_loc) = item {
+                    let signature = function_signature(db, *func_loc);
+                    let (param_names, param_types, _) = compute_function_metadata(
+                        &signature,
+                        &resolution_ctx,
+                        &type_aliases,
+                        &recursive_aliases,
+                    );
+                    let param_map: HashMap<String, baml_type::Ty> =
+                        param_names.into_iter().zip(param_types).collect();
+                    fn_param_types.insert(signature.name.to_string(), param_map);
+                }
+            }
+        }
+
+        for file in files {
+            let items_struct = baml_compiler_hir::file_items(db, *file);
+            for item in items_struct.items(db) {
+                if let ItemId::Test(test_loc) = item {
+                    let item_tree = baml_compiler_hir::file_item_tree(db, test_loc.file(db));
+                    let test = &item_tree[test_loc.id(db)];
+                    // Use the first function ref to look up param types.
+                    let param_types = test
+                        .function_refs
+                        .first()
+                        .and_then(|name| fn_param_types.get(name.as_str()));
+                    let args = test
+                        .args
+                        .iter()
+                        .map(|(k, v)| {
+                            let ty = param_types
+                                .and_then(|m| m.get(k.as_str()))
+                                .cloned()
+                                .unwrap_or(baml_type::Ty::Null {
+                                    attr: baml_type::TyAttr::default(),
+                                });
+                            (k.clone(), convert_hir_test_arg(v, &ty))
+                        })
+                        .collect();
+                    program.test_cases.push(bex_vm_types::TestCase {
+                        name: test.name.to_string(),
+                        function_names: test
+                            .function_refs
+                            .iter()
+                            .map(std::string::ToString::to_string)
+                            .collect(),
+                        args,
+                    });
+                }
+            }
+        }
+    }
+
     Ok(program)
+}
+
+fn parse_retry_policy_field<T>(
+    policy_name: &str,
+    field_name: &str,
+    raw_value: Option<&str>,
+    default: T,
+) -> Result<T, LoweringError>
+where
+    T: std::str::FromStr + Copy,
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    match raw_value {
+        None => Ok(default),
+        Some(value) => value
+            .parse::<T>()
+            .map_err(|e| LoweringError::InvalidRetryPolicyValue {
+                policy_name: policy_name.to_string(),
+                field_name: field_name.to_string(),
+                value: value.to_string(),
+                reason: e.to_string(),
+            }),
+    }
+}
+
+/// Convert an HIR `TestArgValue` to a `bex_vm_types::TestArgValue`,
+/// using the declared parameter type to annotate arrays and maps.
+fn convert_hir_test_arg(
+    v: &baml_compiler_hir::TestArgValue,
+    ty: &baml_type::Ty,
+) -> bex_vm_types::TestArgValue {
+    match v {
+        baml_compiler_hir::TestArgValue::Null => bex_vm_types::TestArgValue::Null,
+        baml_compiler_hir::TestArgValue::Int(i) => bex_vm_types::TestArgValue::Int(*i),
+        baml_compiler_hir::TestArgValue::Float(f) => bex_vm_types::TestArgValue::Float(*f),
+        baml_compiler_hir::TestArgValue::Bool(b) => bex_vm_types::TestArgValue::Bool(*b),
+        baml_compiler_hir::TestArgValue::String(s) => bex_vm_types::TestArgValue::String(s.clone()),
+        baml_compiler_hir::TestArgValue::Array(arr) => {
+            let element_type = match ty {
+                baml_type::Ty::List(elem, _) => elem.as_ref().clone(),
+                _ => baml_type::Ty::Null {
+                    attr: baml_type::TyAttr::default(),
+                },
+            };
+            bex_vm_types::TestArgValue::Array {
+                element_type: element_type.clone(),
+                items: arr
+                    .iter()
+                    .map(|item| convert_hir_test_arg(item, &element_type))
+                    .collect(),
+            }
+        }
+        baml_compiler_hir::TestArgValue::Map(map) => {
+            let (key_type, value_type) = match ty {
+                baml_type::Ty::Map { key, value, .. } => {
+                    (key.as_ref().clone(), value.as_ref().clone())
+                }
+                _ => (
+                    baml_type::Ty::String {
+                        attr: baml_type::TyAttr::default(),
+                    },
+                    baml_type::Ty::Null {
+                        attr: baml_type::TyAttr::default(),
+                    },
+                ),
+            };
+            bex_vm_types::TestArgValue::Map {
+                key_type,
+                value_type: value_type.clone(),
+                entries: map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), convert_hir_test_arg(v, &value_type)))
+                    .collect(),
+            }
+        }
+    }
 }
 
 /// Extract param names, param types, and return type from a function signature.
@@ -578,13 +841,17 @@ fn compute_function_metadata(
             let (ty, _) = resolution_ctx.lower_type_ref(&p.type_ref, Span::default());
             baml_type::convert_tir_ty(&ty, type_aliases, recursive_aliases)
                 .and_then(baml_type::sanitize_for_runtime)
-                .unwrap_or(baml_type::Ty::Null)
+                .unwrap_or(baml_type::Ty::Null {
+                    attr: baml_type::TyAttr::default(),
+                })
         })
         .collect();
     let (ret_ty, _) = resolution_ctx.lower_type_ref(&signature.return_type, Span::default());
     let return_type = baml_type::convert_tir_ty(&ret_ty, type_aliases, recursive_aliases)
         .and_then(baml_type::sanitize_for_runtime)
-        .unwrap_or(baml_type::Ty::Null);
+        .unwrap_or(baml_type::Ty::Null {
+            attr: baml_type::TyAttr::default(),
+        });
     (param_names, param_types, return_type)
 }
 
@@ -627,6 +894,7 @@ fn build_typing_context(
                 let func_type = baml_compiler_tir::Ty::Function {
                     params,
                     ret: Box::new(return_type),
+                    attr: baml_base::TyAttr::default(),
                 };
 
                 // Use the display name as the key (e.g., "baml.llm.render_prompt" or "my_func")
@@ -646,4 +914,18 @@ fn sys_op_for_builtin_path(path: &str) -> Option<SysOp> {
     // Delegate to the generated function from bex_vm_types, which is
     // derived from the same #[sys_op] definitions in with_builtins!.
     bex_vm_types::sys_op_for_path(path)
+}
+
+/// Build a table of byte offsets where each line starts in the source text.
+///
+/// Returns `[0, offset_of_line_2, offset_of_line_3, ...]`.
+#[allow(clippy::cast_possible_truncation)]
+fn build_line_starts(text: &str) -> Vec<u32> {
+    let mut starts = vec![0u32];
+    for (i, byte) in text.bytes().enumerate() {
+        if byte == b'\n' {
+            starts.push((i + 1) as u32);
+        }
+    }
+    starts
 }

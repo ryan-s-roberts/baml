@@ -1,17 +1,16 @@
 ---
-source: target/debug/build/baml_tests-40b0bd756827c945/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 === TYPE INFERENCE ===
   Function Bar:
-    Return: Literal(Bool(true))
+    Return: Literal(Bool(true), TyAttr(None))
     Errors:
       - Expected foo. Found bool
   Function Foo:
-    Return: Literal(Int(1))
+    Return: Literal(Int(1), TyAttr(None))
   Function Baz:
-    Return: Literal(String("hello"))
+    Return: Literal(String("hello"), TyAttr(None))
   Function EchoJSON:
-    Return: TypeAlias(QualifiedName { namespace: Local, name: "NotJSON" })
+    Return: TypeAlias(QualifiedName { namespace: Local, name: "NotJSON" }, TyAttr(None))
   Function MakeJSON:
-    Return: Error
+    Return: Error { attr: TyAttr(None) }

@@ -1,13 +1,20 @@
 ---
-source: target/debug/build/baml_tests-5f3cea2866046cb1/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 === TYPE INFERENCE ===
   Function Broken.MixedLiteralAndTyped:
-    Return: Literal(String("mixed"))
+    Return: Literal(String("mixed"), TyAttr(None))
   Function Broken.Invalid:
-    Return: Void
+    Return: Void { attr: TyAttr(None) }
   Function Broken.BadUnionPattern:
-    Return: Union([Unknown, Literal(String("bad"))])
+    Return: Union([Unknown { attr: TyAttr(None) }, Literal(String("bad"), TyAttr(None))], TyAttr(None))
+    Errors:
+      - Unknown type b
+  Function stream_Broken.MixedLiteralAndTyped:
+    Return: Literal(String("mixed"), TyAttr(None))
+  Function stream_Broken.Invalid:
+    Return: Void { attr: TyAttr(None) }
+  Function stream_Broken.BadUnionPattern:
+    Return: Union([Unknown { attr: TyAttr(None) }, Literal(String("bad"), TyAttr(None))], TyAttr(None))
     Errors:
       - Unknown type b

@@ -74,13 +74,27 @@ pub(crate) fn lower_client(
     // Extract and validate config block fields
     let mut default_role: Option<String> = None;
     let mut allowed_roles: Vec<String> = Vec::new();
+    let mut retry_policy_name: Option<Name> = None;
+    let mut retry_policy_span: Option<rowan::TextRange> = None;
+    let mut sub_client_names: Vec<Name> = Vec::new();
+    let mut round_robin_start: Option<i32> = None;
 
     if let Some(config_block) = client_def.config_block() {
+        // Extract retry_policy reference if present
+        if let Some(rp_item) = config_block
+            .items()
+            .find(|item| item.matches_key("retry_policy"))
+        {
+            if let Some(word) = rp_item.value_word() {
+                retry_policy_name = Some(Name::new(word.text()));
+                retry_policy_span = Some(word.text_range());
+            }
+        }
         // Check for unknown properties in client config block
         for item in config_block.items() {
             if let Some(key) = item.key() {
                 let key_text = key.text();
-                if key_text != "provider" && key_text != "options" {
+                if key_text != "provider" && key_text != "options" && key_text != "retry_policy" {
                     ctx.push_diagnostic(HirDiagnostic::UnknownClientProperty {
                         client_name: client_name.clone(),
                         field_name: key_text.to_string(),
@@ -122,11 +136,70 @@ pub(crate) fn lower_client(
                         allowed_roles = elements.into_iter().filter_map(|(s, _)| s).collect();
                     }
                 }
+
+                // Extract sub-client names from strategy array (for composite clients)
+                if is_composite {
+                    if let Some(strategy_item) = options_block
+                        .items()
+                        .find(|item| item.matches_key("strategy"))
+                    {
+                        if let Some(config_value) = strategy_item.config_value_node() {
+                            if let Some(array_literal) = config_value.children().find(|child| {
+                                child.kind() == baml_compiler_syntax::SyntaxKind::ARRAY_LITERAL
+                            }) {
+                                for element in array_literal.children().filter(|child| {
+                                    child.kind() == baml_compiler_syntax::SyntaxKind::CONFIG_VALUE
+                                }) {
+                                    // Each element should be a WORD token (client name)
+                                    if let Some(word) = element
+                                        .children_with_tokens()
+                                        .filter_map(rowan::NodeOrToken::into_token)
+                                        .find(|t| {
+                                            t.kind() == baml_compiler_syntax::SyntaxKind::WORD
+                                        })
+                                    {
+                                        sub_client_names.push(Name::new(word.text()));
+                                    } else {
+                                        ctx.push_diagnostic(
+                                            HirDiagnostic::InvalidStrategyElement {
+                                                client_name: client_name.clone(),
+                                                span: ctx.span(element.text_range()),
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if provider.as_str() == "round-robin" {
+                        if let Some(start_item) =
+                            options_block.items().find(|item| item.matches_key("start"))
+                        {
+                            if let Some(start) = start_item.value_int() {
+                                if let Ok(start_i32) = i32::try_from(start) {
+                                    round_robin_start = Some(start_i32);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    // Use default allowed_roles if none specified
+    // Validate composite clients have at least one sub-client
+    if is_composite && sub_client_names.is_empty() {
+        ctx.push_diagnostic(HirDiagnostic::EmptyStrategy {
+            client_name: client_name.clone(),
+            provider: provider.to_string(),
+            span: ctx.span(node.text_range()),
+        });
+    }
+
+    // Use default allowed_roles if none specified.
+    // Model-specific role defaults (e.g. o1 models) are handled at runtime
+    // in each provider's `allowed_roles()` method.
     if allowed_roles.is_empty() {
         allowed_roles = DEFAULT_ALLOWED_ROLES
             .iter()
@@ -139,6 +212,10 @@ pub(crate) fn lower_client(
         provider,
         default_role,
         allowed_roles,
+        retry_policy_name,
+        retry_policy_span,
+        sub_client_names,
+        round_robin_start,
     })
 }
 
@@ -245,7 +322,7 @@ fn validate_http_config_fields(
 }
 
 /// Default allowed roles when none are specified.
-const DEFAULT_ALLOWED_ROLES: &[&str] = &["user", "assistant", "system"];
+const DEFAULT_ALLOWED_ROLES: &[&str] = &["system", "user", "assistant"];
 
 /// Validate `allowed_roles` and `remap_roles` fields.
 fn validate_roles(ctx: &mut LoweringContext, client_name: &str, options_block: &ConfigBlock) {

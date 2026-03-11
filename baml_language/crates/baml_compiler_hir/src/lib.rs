@@ -17,7 +17,10 @@
 
 use std::sync::Arc;
 
-use baml_base::{FileId, Name, SourceFile, Span};
+use baml_base::{
+    FieldAttr, FieldAttrInner, FileId, Name, SapAttrValue, SapConstValue, SourceFile, Span, TyAttr,
+    TyAttrInner,
+};
 use baml_compiler_diagnostics::{HirDiagnostic, NameError};
 use baml_compiler_parser::syntax_tree;
 use baml_compiler_syntax::SyntaxNode;
@@ -33,6 +36,7 @@ mod ids;
 mod item_tree;
 mod loc;
 mod path;
+pub mod path_resolve;
 pub mod pretty;
 pub mod reserved_names;
 mod signature;
@@ -65,10 +69,11 @@ pub use type_ref::*;
 
 /// Database trait for HIR queries.
 ///
-/// Extends `baml_workspace::Db`. Use the free functions in this crate
-/// (e.g., `project_items`, `file_items`) for HIR queries.
+/// Extends `baml_compiler_ppir::Db` (which itself extends `baml_workspace::Db`).
+/// Use the free functions in this crate (e.g., `project_items`, `file_items`)
+/// for HIR queries.
 #[salsa::db]
-pub trait Db: baml_workspace::Db {}
+pub trait Db: baml_compiler_ppir::Db {}
 
 //
 // ───────────────────────────────────────────────────── TRACKED STRUCTS ─────
@@ -171,9 +176,10 @@ pub fn file_lowering(db: &dyn Db, file: SourceFile) -> LoweringResult<'_> {
 
 /// Extract `ItemTree` from a file's syntax tree.
 ///
-/// This is a convenience wrapper around `file_lowering` for callers that
-/// only need the `ItemTree`. Not tracked separately since `file_lowering`
-/// already caches the result - this just clones the Arc (O(1)).
+/// Works for both real and synthetic files: `syntax_tree` parses the file's
+/// text, lowering produces the items. For real files, these are user-defined
+/// items; for synthetic files, these are `stream_*` items.
+#[salsa::tracked]
 pub fn file_item_tree(db: &dyn Db, file: SourceFile) -> Arc<ItemTree> {
     file_lowering(db, file).item_tree(db).clone()
 }
@@ -184,11 +190,20 @@ pub fn file_item_tree(db: &dyn Db, file: SourceFile) -> Arc<ItemTree> {
 
 /// Tracked: Get all items defined in a file.
 ///
-/// Returns a tracked struct containing interned IDs for all top-level items.
+/// Returns a tracked struct containing interned IDs for all top-level items,
+/// including synthesized stream_* items from PPIR expansion.
 #[salsa::tracked]
 pub fn file_items(db: &dyn Db, file: SourceFile) -> FileItems<'_> {
     let item_tree = file_item_tree(db, file);
-    let items = intern_all_items(db, file, &item_tree);
+    let mut items = intern_all_items(db, file, &item_tree);
+
+    // Also include synthesized stream_* items
+    let synth = baml_compiler_ppir::ppir_expansion_cst(db, file);
+    if let Some(synth_file) = synth.source_file(db) {
+        let synth_tree = file_item_tree(db, synth_file);
+        items.extend(intern_all_items(db, synth_file, &synth_tree));
+    }
+
     FileItems::new(db, items)
 }
 
@@ -198,8 +213,7 @@ pub fn project_items(db: &dyn Db, root: baml_workspace::Project) -> ProjectItems
     let mut all_items = Vec::new();
 
     for file in root.files(db) {
-        let items_struct = file_items(db, *file);
-        all_items.extend(items_struct.items(db).iter().copied());
+        all_items.extend(file_items(db, *file).items(db).iter().copied());
     }
 
     ProjectItems::new(db, all_items)
@@ -290,15 +304,15 @@ pub const BUILTIN_PATH_PREFIX: &str = "<builtin>/";
 /// # Examples
 ///
 /// ```ignore
-/// // Builtin file
+/// // Builtin file "<builtin>/baml/llm.baml"
 /// let ns = file_namespace(db, builtin_llm_file);
-/// assert_eq!(ns, Some(vec![Name::new("baml"), Name::new("llm")]));
+/// assert_eq!(ns, Some(Namespace::BamlStd { path: vec![Name::new("llm")] }));
 ///
 /// // User file
 /// let ns = file_namespace(db, user_file);
 /// assert_eq!(ns, None);
 /// ```
-pub fn file_namespace(db: &dyn Db, file: SourceFile) -> Option<Vec<Name>> {
+pub fn file_namespace(db: &dyn Db, file: SourceFile) -> Option<Namespace> {
     let path = file.path(db);
     let path_str = path.to_string_lossy();
 
@@ -314,9 +328,19 @@ pub fn file_namespace(db: &dyn Db, file: SourceFile) -> Option<Vec<Name>> {
     let segments: Vec<Name> = without_ext.split('/').map(Name::new).collect();
 
     if segments.is_empty() {
-        None
+        return None;
+    }
+
+    // Builtin files under "baml/" get BamlStd namespace with "baml" prefix stripped.
+    // E.g., ["baml", "llm"] -> BamlStd { path: ["llm"] }
+    if segments.first().is_some_and(|s| s.as_str() == "baml") {
+        Some(Namespace::BamlStd {
+            path: segments[1..].to_vec(),
+        })
     } else {
-        Some(segments)
+        Some(Namespace::UserModule {
+            module_path: segments,
+        })
     }
 }
 
@@ -341,28 +365,60 @@ pub fn function_qualified_name<'db>(db: &'db dyn Db, function: FunctionLoc<'db>)
     let file = function.file(db);
     let signature = function_signature(db, function);
 
-    match file_namespace(db, file) {
-        None => {
-            // Regular user file - local namespace
-            QualifiedName::local(signature.name.clone())
-        }
-        Some(namespace_segments) => {
-            // Builtin file - use BamlStd namespace
-            // namespace_segments is like ["baml", "llm"]
-            // We want BamlStd { path: ["llm"] } for "baml.llm.render_prompt"
-            if namespace_segments
-                .first()
-                .is_some_and(|s| s.as_str() == "baml")
-            {
-                // Strip the "baml" prefix - it's implicit in BamlStd
-                let path = namespace_segments[1..].to_vec();
-                QualifiedName::baml_std(path, signature.name.clone())
-            } else {
-                // Non-baml namespace (future use)
-                QualifiedName::user_module(namespace_segments, signature.name.clone())
-            }
-        }
+    let namespace = file_namespace(db, file).unwrap_or(Namespace::Local);
+    QualifiedName {
+        namespace,
+        name: signature.name.clone(),
     }
+}
+
+/// Returns the qualified name of a class.
+///
+/// Mirrors `function_qualified_name` — classes in builtin BAML files
+/// get `baml.llm.*` names, user classes get local names.
+#[salsa::tracked]
+pub fn class_qualified_name<'db>(db: &'db dyn Db, class: ClassLoc<'db>) -> QualifiedName {
+    let file = class.file(db);
+    let item_tree = file_item_tree(db, file);
+    let class_def = &item_tree[class.id(db)];
+
+    let namespace = file_namespace(db, file).unwrap_or(Namespace::Local);
+    QualifiedName {
+        namespace,
+        name: class_def.name.clone(),
+    }
+}
+
+/// Returns the qualified name of an enum.
+///
+/// Mirrors `class_qualified_name` — enums in builtin BAML files
+/// get `baml.llm.*` names, user enums get local names.
+#[salsa::tracked]
+pub fn enum_qualified_name<'db>(db: &'db dyn Db, enum_loc: EnumLoc<'db>) -> QualifiedName {
+    let file = enum_loc.file(db);
+    let item_tree = file_item_tree(db, file);
+    let enum_def = &item_tree[enum_loc.id(db)];
+
+    let namespace = file_namespace(db, file).unwrap_or(Namespace::Local);
+    QualifiedName {
+        namespace,
+        name: enum_def.name.clone(),
+    }
+}
+
+/// Returns the set of variant names for an enum.
+///
+/// Per-enum Salsa query — only invalidated when that enum's file changes.
+/// Used by path resolution so that modifying one enum doesn't force
+/// re-resolution of paths involving other enums.
+#[salsa::tracked(returns(ref))]
+pub fn enum_variant_names<'db>(
+    db: &'db dyn Db,
+    enum_loc: EnumLoc<'db>,
+) -> rustc_hash::FxHashSet<Name> {
+    let item_tree = file_item_tree(db, enum_loc.file(db));
+    let enum_data = &item_tree[enum_loc.id(db)];
+    enum_data.variants.iter().map(|v| v.name.clone()).collect()
 }
 
 /// Internal helper that computes both signature and source map together.
@@ -380,7 +436,6 @@ fn function_signature_with_source_map<'db>(
     let func_name = func.name.clone();
 
     // Client resolve functions have synthetic signatures: no params, returns PrimitiveClient.
-    // LLM functions fall through to read their real signature from the CST.
     if matches!(
         &func.compiler_generated,
         Some(item_tree::CompilerGenerated::ClientResolve { .. })
@@ -389,13 +444,78 @@ fn function_signature_with_source_map<'db>(
             Arc::new(FunctionSignature {
                 name: func_name,
                 params: vec![],
-                return_type: TypeRef::Path(path::Path::new(vec![
+                return_type: TypeRef::path(path::Path::new(vec![
                     Name::new("baml"),
                     Name::new("llm"),
                     Name::new("PrimitiveClient"),
                 ])),
+                throws: None,
             }),
             SignatureSourceMap::default(),
+        );
+    }
+
+    // Compiler-generated LLM functions: params from base LLM function in CST, return type per variant.
+    if let Some(ref cg) = func.compiler_generated {
+        let (base_name, return_type_override) = match cg {
+            item_tree::CompilerGenerated::LlmCall { base_name } => (base_name.clone(), None),
+            item_tree::CompilerGenerated::LlmRenderPrompt { base_name } => (
+                base_name.clone(),
+                Some(TypeRef::path(path::Path::new(vec![
+                    Name::new("baml"),
+                    Name::new("llm"),
+                    Name::new("PromptAst"),
+                ]))),
+            ),
+            item_tree::CompilerGenerated::LlmBuildRequest { base_name } => (
+                base_name.clone(),
+                Some(TypeRef::path(path::Path::new(vec![
+                    Name::new("baml"),
+                    Name::new("http"),
+                    Name::new("Request"),
+                ]))),
+            ),
+            item_tree::CompilerGenerated::ClientResolve { .. } => {
+                // Already handled above
+                unreachable!("ClientResolve returned earlier")
+            }
+        };
+        let tree = syntax_tree(db, file);
+        let source_file = baml_compiler_syntax::ast::SourceFile::cast(tree).unwrap();
+        let (base_sig, base_source_map) = source_file
+            .items()
+            .find_map(|item| {
+                if let baml_compiler_syntax::ast::Item::Function(f) = item {
+                    if f.name().as_ref().map(rowan::SyntaxToken::text) == Some(base_name.as_str()) {
+                        return Some(FunctionSignature::lower(&f));
+                    }
+                }
+                None
+            })
+            .unwrap_or((
+                Arc::new(FunctionSignature {
+                    name: base_name.clone(),
+                    params: vec![],
+                    return_type: TypeRef::unknown(),
+                    throws: None,
+                }),
+                SignatureSourceMap::default(),
+            ));
+        let return_type = return_type_override.unwrap_or_else(|| base_sig.return_type.clone());
+        // Use base source map only for LlmCall so param/return type errors are reported once.
+        // For render_prompt/build_request, skip so we don't duplicate the same diagnostic.
+        let source_map = match cg {
+            item_tree::CompilerGenerated::LlmCall { .. } => base_source_map,
+            _ => SignatureSourceMap::default(),
+        };
+        return (
+            Arc::new(FunctionSignature {
+                name: func_name,
+                params: base_sig.params.clone(),
+                return_type,
+                throws: base_sig.throws.clone(),
+            }),
+            source_map,
         );
     }
 
@@ -406,7 +526,8 @@ fn function_signature_with_source_map<'db>(
         Arc::new(FunctionSignature {
             name: func.name.clone(),
             params: vec![],
-            return_type: TypeRef::Unknown,
+            return_type: TypeRef::unknown(),
+            throws: None,
         }),
         SignatureSourceMap::default(),
     );
@@ -429,7 +550,13 @@ fn function_signature_with_source_map<'db>(
                 let qualified_method_name =
                     QualifiedName::local_method_from_str(class_name_text, method_name.text());
                 if qualified_method_name.as_str() == func_name.as_str() {
-                    Some(lower_method_signature(&method, &func_name, class_name_text))
+                    let namespace = file_namespace(db, file).unwrap_or(baml_base::Namespace::Local);
+                    let self_type_name = baml_base::QualifiedName {
+                        namespace,
+                        name: Name::new(class_name_text),
+                    }
+                    .display_name();
+                    Some(lower_method_signature(&method, &func_name, &self_type_name))
                 } else {
                     None
                 }
@@ -445,7 +572,7 @@ fn function_signature_with_source_map<'db>(
 fn lower_method_signature(
     method_node: &baml_compiler_syntax::ast::FunctionDef,
     method_name: &Name,
-    class_name: &str,
+    self_type_name: &Name,
 ) -> (Arc<FunctionSignature>, SignatureSourceMap) {
     let mut source_map = SignatureSourceMap::new();
 
@@ -458,12 +585,12 @@ fn lower_method_signature(
                 let type_node = param_node.ty();
                 let type_ref = if param_name == "self" {
                     // 'self' gets the class type
-                    TypeRef::named(class_name.into())
+                    TypeRef::named(self_type_name.clone())
                 } else {
                     type_node
                         .as_ref()
                         .map(TypeRef::from_ast)
-                        .unwrap_or(TypeRef::Unknown)
+                        .unwrap_or_else(TypeRef::unknown)
                 };
 
                 // Store the spans in the source map
@@ -483,18 +610,28 @@ fn lower_method_signature(
     let return_type = return_type_node
         .as_ref()
         .map(TypeRef::from_ast)
-        .unwrap_or(TypeRef::Unknown);
+        .unwrap_or_else(TypeRef::unknown);
 
     // Store return type span in source map
     if let Some(span) = return_type_node.map(|t| t.text_range()) {
         source_map.set_return_type_span(span);
     }
 
+    let throws_clause = method_node.throws_clause();
+    let throws = throws_clause
+        .as_ref()
+        .and_then(baml_compiler_syntax::ThrowsClause::type_expr)
+        .map(|te| {
+            source_map.set_throws_type_span(te.syntax().text_range());
+            TypeRef::from_ast(&te)
+        });
+
     (
         Arc::new(FunctionSignature {
             name: method_name.clone(),
             params,
             return_type,
+            throws,
         }),
         source_map,
     )
@@ -640,8 +777,7 @@ pub fn project_type_item_spans(
                 let class = &item_tree[loc.id(db)];
                 let name = class.name.clone();
 
-                if let Some(span) =
-                    get_item_name_span(db, file, "class", name.as_str(), loc.id(db).index())
+                if let Some(span) = get_item_name_span(db, file, "class", &name, loc.id(db).index())
                 {
                     spans.insert(name, span);
                 }
@@ -653,7 +789,7 @@ pub fn project_type_item_spans(
                 let name = alias.name.clone();
 
                 if let Some(span) =
-                    get_item_name_span(db, file, "type alias", name.as_str(), loc.id(db).index())
+                    get_item_name_span(db, file, "type alias", &name, loc.id(db).index())
                 {
                     spans.insert(name, span);
                 }
@@ -691,7 +827,7 @@ pub fn project_class_field_type_spans(
             // Find the class in the CST
             if let Some(class_node) = source_file.items().find_map(|item| {
                 if let baml_compiler_syntax::ast::Item::Class(c) = item {
-                    if c.name().as_ref().map(SyntaxToken::text) == Some(&class_name) {
+                    if c.name().as_ref().map(SyntaxToken::text) == Some(class_name.as_str()) {
                         return Some(c);
                     }
                 }
@@ -745,7 +881,7 @@ pub fn project_type_alias_type_spans(
             // Find the type alias in the CST
             if let Some(alias_node) = source_file.items().find_map(|item| {
                 if let baml_compiler_syntax::ast::Item::TypeAlias(a) = item {
-                    if a.name().as_ref().map(SyntaxToken::text) == Some(&alias_name) {
+                    if a.name().as_ref().map(SyntaxToken::text) == Some(alias_name.as_str()) {
                         return Some(a);
                     }
                 }
@@ -1024,7 +1160,15 @@ pub fn list_function_names(db: &dyn Db, root: baml_workspace::Project) -> Vec<(S
             let source_file = baml_compiler_syntax::ast::SourceFile::cast(tree).unwrap();
             let file_id = file.file_id(db);
 
-            // Find the function in the CST to get its name span
+            // Find the function in the CST to get its name span.
+            // For compiler-generated LLM helpers (Foo.render_prompt, Foo.build_request), use the base LLM function's span.
+            let name_to_find = match &func.compiler_generated {
+                Some(
+                    item_tree::CompilerGenerated::LlmRenderPrompt { base_name }
+                    | item_tree::CompilerGenerated::LlmBuildRequest { base_name },
+                ) => base_name.clone(),
+                _ => func_name.clone(),
+            };
             let span = source_file
                 .items()
                 .flat_map(|item| match item {
@@ -1035,7 +1179,8 @@ pub fn list_function_names(db: &dyn Db, root: baml_workspace::Project) -> Vec<(S
                     _ => vec![],
                 })
                 .find(|function_def| {
-                    function_def.name().as_ref().map(SyntaxToken::text) == Some(&func_name)
+                    function_def.name().as_ref().map(SyntaxToken::text)
+                        == Some(name_to_find.as_str())
                 })
                 .and_then(|f| f.name())
                 .map(|name_token| Span::new(file_id, name_token.text_range()))
@@ -1048,6 +1193,179 @@ pub fn list_function_names(db: &dyn Db, root: baml_workspace::Project) -> Vec<(S
     functions
 }
 
+/// The kind of a symbol in a BAML project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolKind {
+    Function,
+    Class,
+    Enum,
+    TypeAlias,
+    Client,
+    Test,
+    Generator,
+    TemplateString,
+    RetryPolicy,
+    /// A field within a class.
+    Field,
+    /// A variant within an enum.
+    EnumVariant,
+}
+
+/// A symbol with proper CST ranges, suitable for document-symbol / outline views.
+#[derive(Debug, Clone)]
+pub struct FileSymbol {
+    pub name: String,
+    pub kind: SymbolKind,
+    pub range: TextRange,
+    pub selection_range: TextRange,
+    pub children: Vec<FileSymbol>,
+}
+
+/// Returns all top-level symbols in a single file with accurate CST ranges.
+///
+/// Used by `textDocument/documentSymbol` to power the Outline view and `@`
+/// symbol search.  Each symbol carries its full range and name-selection range
+/// derived directly from the concrete syntax tree, so cursor-position matching
+/// works correctly.
+pub fn list_file_symbols(db: &dyn Db, file: SourceFile) -> Vec<FileSymbol> {
+    use baml_compiler_syntax::ast;
+    use rowan::ast::AstNode as _;
+
+    let tree = syntax_tree(db, file);
+    let Some(source_file) = ast::SourceFile::cast(tree) else {
+        return Vec::new();
+    };
+
+    let mut symbols = Vec::new();
+
+    for item in source_file.items() {
+        match item {
+            ast::Item::Function(func) => {
+                if let Some(name_token) = func.name() {
+                    // Skip compiler-generated functions (render_prompt, build_request)
+                    if name_token.text().contains('.') {
+                        continue;
+                    }
+                    symbols.push(FileSymbol {
+                        name: name_token.text().to_string(),
+                        kind: SymbolKind::Function,
+                        range: func.syntax().text_range(),
+                        selection_range: name_token.text_range(),
+                        children: Vec::new(),
+                    });
+                }
+            }
+            ast::Item::Class(class) => {
+                if let Some(name_token) = class.name() {
+                    let children: Vec<FileSymbol> = class
+                        .fields()
+                        .filter_map(|field| {
+                            let field_name = field.name()?;
+                            Some(FileSymbol {
+                                name: field_name.text().to_string(),
+                                kind: SymbolKind::Field,
+                                range: field.syntax().text_range(),
+                                selection_range: field_name.text_range(),
+                                children: Vec::new(),
+                            })
+                        })
+                        .collect();
+
+                    symbols.push(FileSymbol {
+                        name: name_token.text().to_string(),
+                        kind: SymbolKind::Class,
+                        range: class.syntax().text_range(),
+                        selection_range: name_token.text_range(),
+                        children,
+                    });
+                }
+            }
+            ast::Item::Enum(enum_def) => {
+                if let Some(name_token) = enum_def.name() {
+                    let children: Vec<FileSymbol> = enum_def
+                        .variants()
+                        .filter_map(|variant| {
+                            let variant_name = variant.name()?;
+                            Some(FileSymbol {
+                                name: variant_name.text().to_string(),
+                                kind: SymbolKind::EnumVariant,
+                                range: variant.syntax().text_range(),
+                                selection_range: variant_name.text_range(),
+                                children: Vec::new(),
+                            })
+                        })
+                        .collect();
+
+                    symbols.push(FileSymbol {
+                        name: name_token.text().to_string(),
+                        kind: SymbolKind::Enum,
+                        range: enum_def.syntax().text_range(),
+                        selection_range: name_token.text_range(),
+                        children,
+                    });
+                }
+            }
+            ast::Item::TypeAlias(alias) => {
+                if let Some(name_token) = alias.name() {
+                    symbols.push(FileSymbol {
+                        name: name_token.text().to_string(),
+                        kind: SymbolKind::TypeAlias,
+                        range: alias.syntax().text_range(),
+                        selection_range: name_token.text_range(),
+                        children: Vec::new(),
+                    });
+                }
+            }
+            ast::Item::Client(client) => {
+                if let Some(name_token) = client.name() {
+                    symbols.push(FileSymbol {
+                        name: name_token.text().to_string(),
+                        kind: SymbolKind::Client,
+                        range: client.syntax().text_range(),
+                        selection_range: name_token.text_range(),
+                        children: Vec::new(),
+                    });
+                }
+            }
+            ast::Item::Test(test) => {
+                if let Some(name_token) = test.name() {
+                    symbols.push(FileSymbol {
+                        name: name_token.text().to_string(),
+                        kind: SymbolKind::Test,
+                        range: test.syntax().text_range(),
+                        selection_range: name_token.text_range(),
+                        children: Vec::new(),
+                    });
+                }
+            }
+            ast::Item::RetryPolicy(rp) => {
+                if let Some(name_token) = rp.name() {
+                    symbols.push(FileSymbol {
+                        name: name_token.text().to_string(),
+                        kind: SymbolKind::RetryPolicy,
+                        range: rp.syntax().text_range(),
+                        selection_range: name_token.text_range(),
+                        children: Vec::new(),
+                    });
+                }
+            }
+            ast::Item::TemplateString(ts) => {
+                if let Some(name_token) = ts.name() {
+                    symbols.push(FileSymbol {
+                        name: name_token.text().to_string(),
+                        kind: SymbolKind::TemplateString,
+                        range: ts.syntax().text_range(),
+                        selection_range: name_token.text_range(),
+                        children: Vec::new(),
+                    });
+                }
+            }
+        }
+    }
+
+    symbols
+}
+
 /// Returns the body of a function (LLM prompt or expression IR).
 ///
 /// This is the most frequently invalidated query - it changes whenever
@@ -1057,6 +1375,35 @@ pub fn list_function_names(db: &dyn Db, root: baml_workspace::Project) -> Vec<(S
 /// Can't we keep a hash map from `FunctionLoc` to `FunctionBody`?
 #[salsa::tracked]
 pub fn function_body<'db>(db: &'db dyn Db, function: FunctionLoc<'db>) -> Arc<FunctionBody> {
+    Arc::new(build_function_body(db, function))
+}
+
+/// Collect all known type names (primitives + user-defined classes, enums, type aliases)
+/// from the project for BEP-010 bare-type pattern sugar.
+fn collect_known_type_names(db: &dyn Db) -> std::collections::HashSet<String> {
+    let mut names: std::collections::HashSet<String> = body::PRIMITIVE_TYPE_NAMES
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+
+    let project = db.project();
+    for file in project.files(db) {
+        let item_tree = file_item_tree(db, *file);
+        for class in item_tree.classes.values() {
+            names.insert(class.name.to_string());
+        }
+        for enum_def in item_tree.enums.values() {
+            names.insert(enum_def.name.to_string());
+        }
+        for alias in item_tree.type_aliases.values() {
+            names.insert(alias.name.to_string());
+        }
+    }
+    names
+}
+
+/// Build a function body (pure syntactic lowering, no name resolution).
+fn build_function_body<'db>(db: &'db dyn Db, function: FunctionLoc<'db>) -> FunctionBody {
     let file = function.file(db);
     let item_tree = file_item_tree(db, file);
     let func = &item_tree[function.id(db)];
@@ -1088,19 +1435,22 @@ pub fn function_body<'db>(db: &'db dyn Db, function: FunctionLoc<'db>) -> Arc<Fu
             let client_data = item_tree.clients.values().find(|c| c.name == *client_name);
 
             let (provider, default_role, allowed_roles) = if let Some(c) = client_data {
-                (
-                    c.provider.as_str().to_string(),
-                    c.default_role.clone().unwrap_or_else(|| "user".to_string()),
-                    if c.allowed_roles.is_empty() {
-                        vec![
-                            "system".to_string(),
-                            "user".to_string(),
-                            "assistant".to_string(),
-                        ]
-                    } else {
-                        c.allowed_roles.clone()
-                    },
-                )
+                let allowed_roles = if c.allowed_roles.is_empty() {
+                    vec![
+                        "system".to_string(),
+                        "user".to_string(),
+                        "assistant".to_string(),
+                    ]
+                } else {
+                    c.allowed_roles.clone()
+                };
+                let default_role = c.default_role.clone().unwrap_or_else(|| {
+                    allowed_roles
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "user".to_string())
+                });
+                (c.provider.as_str().to_string(), default_role, allowed_roles)
             } else {
                 (
                     "unknown".to_string(),
@@ -1128,7 +1478,7 @@ pub fn function_body<'db>(db: &'db dyn Db, function: FunctionLoc<'db>) -> Arc<Fu
                                 &default_role,
                                 &allowed_roles,
                             );
-                        return Arc::new(FunctionBody::Expr(body, source_map));
+                        return FunctionBody::Expr(body, source_map);
                     }
                 }
             }
@@ -1141,21 +1491,34 @@ pub fn function_body<'db>(db: &'db dyn Db, function: FunctionLoc<'db>) -> Arc<Fu
                 &default_role,
                 &allowed_roles,
             );
-            return Arc::new(FunctionBody::Expr(body, source_map));
+            return FunctionBody::Expr(body, source_map);
         }
     }
 
-    // Check if this is a compiler-generated LLM function
-    if matches!(
-        &func.compiler_generated,
-        Some(item_tree::CompilerGenerated::LlmFunction)
-    ) {
-        // Create synthetic body: baml.llm.call_llm_function("FnName", {args})
+    // Compiler-generated LLM functions: synthetic body calling the appropriate builtin.
+    if let Some(ref cg) = func.compiler_generated {
         let sig = function_signature(db, function);
         let param_names: Vec<Name> = sig.params.iter().map(|p| p.name.clone()).collect();
-        let (expr_body, source_map) =
-            body::lower_llm_to_call_llm_function(func_name.as_str(), &param_names);
-        return Arc::new(FunctionBody::Expr(expr_body, source_map));
+        match cg {
+            item_tree::CompilerGenerated::LlmCall { base_name } => {
+                let (expr_body, source_map) =
+                    body::lower_llm_to_call_llm_function(base_name.as_str(), &param_names);
+                return FunctionBody::Expr(expr_body, source_map);
+            }
+            item_tree::CompilerGenerated::LlmRenderPrompt { base_name } => {
+                let (expr_body, source_map) =
+                    body::lower_llm_to_render_prompt(base_name.as_str(), &param_names);
+                return FunctionBody::Expr(expr_body, source_map);
+            }
+            item_tree::CompilerGenerated::LlmBuildRequest { base_name } => {
+                let (expr_body, source_map) =
+                    body::lower_llm_to_build_request(base_name.as_str(), &param_names);
+                return FunctionBody::Expr(expr_body, source_map);
+            }
+            item_tree::CompilerGenerated::ClientResolve { .. } => {
+                unreachable!("ClientResolve is handled by the early-return block above")
+            }
+        }
     }
 
     // Regular function - find it in the source file
@@ -1192,12 +1555,13 @@ pub fn function_body<'db>(db: &'db dyn Db, function: FunctionLoc<'db>) -> Arc<Fu
 
     // Lower the function with file_id for span tracking.
     let file_id = file.file_id(db);
-    function_def.map_or(Arc::new(FunctionBody::Missing), |f| {
-        FunctionBody::lower(&f, file_id)
+    let known_type_names = collect_known_type_names(db);
+    function_def.map_or(FunctionBody::Missing, |f| {
+        FunctionBody::lower(&f, file_id, known_type_names)
     })
 }
 
-/// Returns `true` if this function is an LLM function (has `CompilerGenerated::LlmFunction` marker).
+/// Returns `true` if this function is one of the expanded LLM pieces (`LlmCall`, `LlmRenderPrompt`, `LlmBuildRequest`).
 ///
 /// This is a cheap check that only reads the `ItemTree`.
 pub fn is_llm_function(db: &dyn Db, function: FunctionLoc<'_>) -> bool {
@@ -1206,7 +1570,11 @@ pub fn is_llm_function(db: &dyn Db, function: FunctionLoc<'_>) -> bool {
     let func = &item_tree[function.id(db)];
     matches!(
         &func.compiler_generated,
-        Some(item_tree::CompilerGenerated::LlmFunction)
+        Some(
+            item_tree::CompilerGenerated::LlmCall { .. }
+                | item_tree::CompilerGenerated::LlmRenderPrompt { .. }
+                | item_tree::CompilerGenerated::LlmBuildRequest { .. }
+        )
     )
 }
 
@@ -1222,15 +1590,14 @@ pub fn llm_function_meta<'db>(db: &'db dyn Db, function: FunctionLoc<'db>) -> Op
     let item_tree = file_item_tree(db, file);
     let func = &item_tree[function.id(db)];
 
-    if !matches!(
-        &func.compiler_generated,
-        Some(item_tree::CompilerGenerated::LlmFunction)
-    ) {
-        return None;
-    }
+    // Only the main-call function (LlmCall) has LLM metadata; render_prompt/build_request do not.
+    let base_name = match &func.compiler_generated {
+        Some(item_tree::CompilerGenerated::LlmCall { base_name }) => base_name.clone(),
+        _ => return None,
+    };
 
     // Go back to the CST to extract prompt template and client
-    let func_name = func.name.clone();
+    let func_name = base_name;
     let tree = syntax_tree(db, file);
     let source_file = baml_compiler_syntax::ast::SourceFile::cast(tree).unwrap();
 
@@ -1427,6 +1794,14 @@ fn intern_all_items<'db>(db: &'db dyn Db, file: SourceFile, tree: &ItemTree) -> 
         items.push(ItemId::TemplateString(loc));
     }
 
+    // Intern retry policies
+    let mut retry_policies: Vec<_> = tree.retry_policies.keys().copied().collect();
+    retry_policies.sort_by_key(|id| id.as_u32());
+    for local_id in retry_policies {
+        let loc = RetryPolicyLoc::new(db, file, local_id);
+        items.push(ItemId::RetryPolicy(loc));
+    }
+
     items
 }
 
@@ -1483,7 +1858,38 @@ fn lower_item(tree: &mut ItemTree, node: &SyntaxNode, ctx: &mut LoweringContext)
             }
         }
         SyntaxKind::FUNCTION_DEF => {
-            if let Some(func) = lower_function(node) {
+            use baml_compiler_syntax::ast::FunctionDef;
+            if let Some(func_def) = FunctionDef::cast(node.clone()) {
+                if func_def.llm_body().is_some() {
+                    // LLM function: expand into Foo, Foo.render_prompt, Foo.build_request
+                    if let Some(name_tok) = func_def.name() {
+                        let base_name: Name = name_tok.text().into();
+                        tree.alloc_function(item_tree::Function {
+                            name: base_name.clone(),
+                            compiler_generated: Some(item_tree::CompilerGenerated::LlmCall {
+                                base_name: base_name.clone(),
+                            }),
+                        });
+                        tree.alloc_function(item_tree::Function {
+                            name: Name::new(format!("{base_name}.render_prompt")),
+                            compiler_generated: Some(
+                                item_tree::CompilerGenerated::LlmRenderPrompt {
+                                    base_name: base_name.clone(),
+                                },
+                            ),
+                        });
+                        tree.alloc_function(item_tree::Function {
+                            name: Name::new(format!("{base_name}.build_request")),
+                            compiler_generated: Some(
+                                item_tree::CompilerGenerated::LlmBuildRequest { base_name },
+                            ),
+                        });
+                    }
+                    // Malformed LLM function with no name; skip expansion (matches lower_function behavior).
+                } else if let Some(func) = lower_function(node) {
+                    tree.alloc_function(func);
+                }
+            } else if let Some(func) = lower_function(node) {
                 tree.alloc_function(func);
             }
             // Validate: type_builder blocks are not allowed in functions
@@ -1537,6 +1943,11 @@ fn lower_item(tree: &mut ItemTree, node: &SyntaxNode, ctx: &mut LoweringContext)
                 tree.alloc_template_string(ts);
             }
         }
+        SyntaxKind::RETRY_POLICY_DEF => {
+            if let Some(rp) = lower_retry_policy(node) {
+                tree.alloc_retry_policy(rp);
+            }
+        }
         SyntaxKind::LET_STMT => {
             // Top-level let statements require semicolons.
             // The semicolon is a CHILD of the LET_STMT node (parsed inside the statement).
@@ -1554,6 +1965,114 @@ fn lower_item(tree: &mut ItemTree, node: &SyntaxNode, ctx: &mut LoweringContext)
         _ => {
             // Skip other nodes (whitespace, comments, etc.)
         }
+    }
+}
+
+//
+// ──────────────────────────────────── SAP ATTRIBUTE PARSING ─────
+//
+
+/// Which SAP field attribute slot to populate.
+#[derive(Clone, Copy)]
+enum SapFieldKind {
+    CompletedMissing,
+    InProgressMissing,
+}
+
+/// Parse an @sap.class_*_`field_missing` attribute from synthesized CST into `FieldAttr`.
+fn parse_sap_field_attr(
+    attr: &baml_compiler_syntax::ast::Attribute,
+    existing: &FieldAttr,
+    kind: SapFieldKind,
+) -> FieldAttr {
+    let value = parse_sap_attr_value(attr);
+    let inner = existing
+        .0
+        .as_ref()
+        .map(|i| FieldAttrInner {
+            sap_class_completed_field_missing: i.sap_class_completed_field_missing.clone(),
+            sap_class_in_progress_field_missing: i.sap_class_in_progress_field_missing.clone(),
+        })
+        .unwrap_or(FieldAttrInner {
+            sap_class_completed_field_missing: SapAttrValue::Never,
+            sap_class_in_progress_field_missing: SapAttrValue::Never,
+        });
+    let inner = match kind {
+        SapFieldKind::CompletedMissing => FieldAttrInner {
+            sap_class_completed_field_missing: value,
+            ..inner
+        },
+        SapFieldKind::InProgressMissing => FieldAttrInner {
+            sap_class_in_progress_field_missing: value,
+            ..inner
+        },
+    };
+    FieldAttr(Some(Box::new(inner)))
+}
+
+/// Parse a @@`sap.in_progress` block attribute from synthesized CST into `TyAttr`.
+fn parse_sap_type_attr(attr: &baml_compiler_syntax::ast::BlockAttribute) -> TyAttr {
+    let value = parse_sap_block_attr_value(attr);
+    TyAttr(Some(Box::new(TyAttrInner {
+        sap_in_progress: value,
+    })))
+}
+
+/// Parse an @sap.* attribute argument into a `SapAttrValue`.
+/// Accepts: "never", "null", "[]", "{}", "true", "false", integers, floats, strings.
+fn parse_sap_attr_value(attr: &baml_compiler_syntax::ast::Attribute) -> SapAttrValue {
+    match attr.string_arg().as_deref() {
+        Some("never") => SapAttrValue::Never,
+        Some("null") => SapAttrValue::ConstValueExpr(SapConstValue::Null),
+        Some("[]") => SapAttrValue::ConstValueExpr(SapConstValue::EmptyList),
+        Some("{}") => SapAttrValue::ConstValueExpr(SapConstValue::EmptyMap),
+        Some("true") => SapAttrValue::ConstValueExpr(SapConstValue::Bool(true)),
+        Some("false") => SapAttrValue::ConstValueExpr(SapConstValue::Bool(false)),
+        Some(s) => {
+            if let Ok(i) = s.parse::<i64>() {
+                SapAttrValue::ConstValueExpr(SapConstValue::Int(i))
+            } else if s.parse::<f64>().is_ok() && !s.contains(|c: char| c.is_alphabetic()) {
+                SapAttrValue::ConstValueExpr(SapConstValue::Float(s.to_string()))
+            } else if let Some((left, right)) = s.split_once('.') {
+                // Enum value pattern: Foo.Bar
+                SapAttrValue::ConstValueExpr(SapConstValue::EnumValue {
+                    enum_name: left.to_string(),
+                    variant_name: right.to_string(),
+                })
+            } else {
+                SapAttrValue::ConstValueExpr(SapConstValue::String(s.to_string()))
+            }
+        }
+        None => SapAttrValue::Never,
+    }
+}
+
+/// Parse a @@sap.* block attribute argument into a `SapAttrValue`.
+/// Same logic as `parse_sap_attr_value` but for `BlockAttribute` type.
+fn parse_sap_block_attr_value(attr: &baml_compiler_syntax::ast::BlockAttribute) -> SapAttrValue {
+    match attr.string_arg().as_deref() {
+        Some("never") => SapAttrValue::Never,
+        Some("null") => SapAttrValue::ConstValueExpr(SapConstValue::Null),
+        Some("[]") => SapAttrValue::ConstValueExpr(SapConstValue::EmptyList),
+        Some("{}") => SapAttrValue::ConstValueExpr(SapConstValue::EmptyMap),
+        Some("true") => SapAttrValue::ConstValueExpr(SapConstValue::Bool(true)),
+        Some("false") => SapAttrValue::ConstValueExpr(SapConstValue::Bool(false)),
+        Some(s) => {
+            if let Ok(i) = s.parse::<i64>() {
+                SapAttrValue::ConstValueExpr(SapConstValue::Int(i))
+            } else if s.parse::<f64>().is_ok() && !s.contains(|c: char| c.is_alphabetic()) {
+                SapAttrValue::ConstValueExpr(SapConstValue::Float(s.to_string()))
+            } else if let Some((left, right)) = s.split_once('.') {
+                // Enum value pattern: Foo.Bar
+                SapAttrValue::ConstValueExpr(SapConstValue::EnumValue {
+                    enum_name: left.to_string(),
+                    variant_name: right.to_string(),
+                })
+            } else {
+                SapAttrValue::ConstValueExpr(SapConstValue::String(s.to_string()))
+            }
+        }
+        None => SapAttrValue::Never,
     }
 }
 
@@ -1591,6 +2110,7 @@ pub(crate) fn lower_class(node: &SyntaxNode, ctx: &mut LoweringContext) -> Optio
             let mut field_alias = Attribute::Unset;
             let mut field_description = Attribute::Unset;
             let mut field_skip = Attribute::Unset;
+            let mut field_attr = FieldAttr::default();
 
             // Validate field attributes for duplicates and constraint syntax
             let mut seen_field_attrs: FxHashMap<String, Span> = FxHashMap::default();
@@ -1674,8 +2194,25 @@ pub(crate) fn lower_class(node: &SyntaxNode, ctx: &mut LoweringContext) -> Optio
                             // Validate constraint attribute syntax
                             validate_constraint_attribute(&attr, &attr_name, attr_span, ctx);
                         }
+                        // SAP field attributes (from synthesized stream_* nodes)
+                        "sap.class_completed_field_missing" => {
+                            field_attr = parse_sap_field_attr(
+                                &attr,
+                                &field_attr,
+                                SapFieldKind::CompletedMissing,
+                            );
+                        }
+                        "sap.class_in_progress_field_missing" => {
+                            field_attr = parse_sap_field_attr(
+                                &attr,
+                                &field_attr,
+                                SapFieldKind::InProgressMissing,
+                            );
+                        }
+                        // @stream.* attributes are consumed by PPIR, silently skip
+                        a if a.starts_with("stream.") => {}
                         _ => {
-                            // Other attributes (stream.done, etc.) - just validate duplicates
+                            // Other attributes - just validate duplicates
                         }
                     }
                 }
@@ -1686,10 +2223,11 @@ pub(crate) fn lower_class(node: &SyntaxNode, ctx: &mut LoweringContext) -> Optio
                 validate_map_type_arity(&type_expr, ctx);
             }
 
+            // Extract TypeRef and check for type-level SAP attributes
             let type_ref = field_node
                 .ty()
                 .map(|t| TypeRef::from_ast(&t))
-                .unwrap_or(TypeRef::Unknown);
+                .unwrap_or_else(TypeRef::unknown);
 
             fields.push(crate::Field {
                 name: field_name,
@@ -1697,6 +2235,7 @@ pub(crate) fn lower_class(node: &SyntaxNode, ctx: &mut LoweringContext) -> Optio
                 alias: field_alias,
                 description: field_description,
                 skip: field_skip,
+                field_attr,
             });
         }
     }
@@ -1706,6 +2245,7 @@ pub(crate) fn lower_class(node: &SyntaxNode, ctx: &mut LoweringContext) -> Optio
     let mut class_is_dynamic = Attribute::Unset;
     let mut class_alias = Attribute::Unset;
     let mut class_description = Attribute::Unset;
+    let mut class_ty_attr = TyAttr::default();
 
     // Validate block attributes
     for attr in class.block_attributes() {
@@ -1779,6 +2319,12 @@ pub(crate) fn lower_class(node: &SyntaxNode, ctx: &mut LoweringContext) -> Optio
                         });
                     }
                 }
+                // SAP block attribute (from synthesized stream_* nodes)
+                "sap.in_progress" => {
+                    class_ty_attr = parse_sap_type_attr(&attr);
+                }
+                // @@stream.* attributes are consumed by PPIR, silently skip
+                a if a.starts_with("stream.") => {}
                 _ => {
                     // Other attributes - just validate duplicates
                 }
@@ -1792,6 +2338,7 @@ pub(crate) fn lower_class(node: &SyntaxNode, ctx: &mut LoweringContext) -> Optio
         is_dynamic: class_is_dynamic,
         alias: class_alias,
         description: class_description,
+        ty_attr: class_ty_attr,
     })
 }
 
@@ -2026,28 +2573,22 @@ pub(crate) fn lower_enum(node: &SyntaxNode, ctx: &mut LoweringContext) -> Option
         name,
         variants,
         alias: enum_alias,
+        ty_attr: TyAttr::default(),
     })
 }
 
 /// Extract function definition from CST - MINIMAL VERSION.
 /// Only extracts the name. Signature and body are in separate queries.
+/// LLM functions are not handled here; they are expanded into three functions in the `FUNCTION_DEF` branch.
 fn lower_function(node: &SyntaxNode) -> Option<Function> {
     use baml_compiler_syntax::ast::FunctionDef;
 
     let func = FunctionDef::cast(node.clone())?;
     let name = func.name()?.text().into();
 
-    // Check if this is an LLM function (marker only — no metadata stored here
-    // to preserve ItemTree early cutoff on body changes)
-    let compiler_generated = if func.llm_body().is_some() {
-        Some(item_tree::CompilerGenerated::LlmFunction)
-    } else {
-        None
-    };
-
     Some(Function {
         name,
-        compiler_generated,
+        compiler_generated: None,
     })
 }
 
@@ -2059,6 +2600,79 @@ fn lower_template_string(node: &SyntaxNode) -> Option<item_tree::TemplateString>
     let name = ts.name()?.text().into();
 
     Some(item_tree::TemplateString { name })
+}
+
+/// Extract retry policy from CST.
+fn lower_retry_policy(node: &SyntaxNode) -> Option<item_tree::RetryPolicy> {
+    use baml_compiler_syntax::ast::RetryPolicyDef;
+
+    let rp = RetryPolicyDef::cast(node.clone())?;
+    let name = rp.name()?.text().into();
+
+    let mut max_retries = None;
+    let mut initial_delay_ms = None;
+    let mut multiplier = None;
+    let mut max_delay_ms = None;
+
+    if let Some(config_block) = rp.config_block() {
+        // Extract max_retries from the top-level config block
+        if let Some(item) = config_block.items().find(|i| i.matches_key("max_retries")) {
+            max_retries = item.value_int().map(|v| v.to_string());
+        }
+
+        // Extract delay/multiplier/max_delay fields from either:
+        // 1. A `strategy` sub-block (traditional syntax):
+        //      strategy { type exponential_backoff  delay_ms 100  multiplier 2 }
+        // 2. Top-level config keys (flat syntax):
+        //      initial_delay_ms 100  multiplier 2  max_delay_ms 1000
+        if let Some(strategy_item) = config_block.items().find(|i| i.matches_key("strategy")) {
+            if let Some(strategy_block) = strategy_item.nested_block() {
+                for item in strategy_block.items() {
+                    let Some(key) = item.key() else { continue };
+                    match key.text() {
+                        "delay_ms" => {
+                            initial_delay_ms = item.value_int().map(|v| v.to_string());
+                        }
+                        "multiplier" => {
+                            // multiplier can be a float, so use value_str
+                            multiplier = item.value_str();
+                        }
+                        "max_delay_ms" => {
+                            max_delay_ms = item.value_int().map(|v| v.to_string());
+                        }
+                        _ => {
+                            // Ignore unknown fields like "type" for now
+                        }
+                    }
+                }
+            }
+        } else {
+            // Flat syntax: delay fields at top level
+            for item in config_block.items() {
+                let Some(key) = item.key() else { continue };
+                match key.text() {
+                    "initial_delay_ms" | "delay_ms" => {
+                        initial_delay_ms = item.value_int().map(|v| v.to_string());
+                    }
+                    "multiplier" => {
+                        multiplier = item.value_str();
+                    }
+                    "max_delay_ms" => {
+                        max_delay_ms = item.value_int().map(|v| v.to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Some(item_tree::RetryPolicy {
+        name,
+        max_retries,
+        initial_delay_ms,
+        multiplier,
+        max_delay_ms,
+    })
 }
 
 /// Extract type alias from CST.
@@ -2077,7 +2691,7 @@ pub(crate) fn lower_type_alias(node: &SyntaxNode) -> Option<TypeAlias> {
     let type_ref = alias
         .ty()
         .map(|t| TypeRef::from_ast(&t))
-        .unwrap_or(TypeRef::Unknown);
+        .unwrap_or_else(TypeRef::unknown);
 
     Some(TypeAlias { name, type_ref })
 }
@@ -2112,7 +2726,9 @@ pub struct HirValidationResult {
 /// - Reserved name validation (field names that are keywords in target languages)
 /// - Field name matches type name validation (Python-specific)
 pub fn validate_hir(db: &dyn Db, root: baml_workspace::Project) -> HirValidationResult {
-    let hir_diagnostics = validate_reserved_names(db, root);
+    let mut hir_diagnostics = validate_reserved_names(db, root);
+    hir_diagnostics.extend(validate_retry_policy_refs(db, root));
+    hir_diagnostics.extend(validate_stream_prefix(db, root));
     let mut name_errors = validate_duplicate_names(db, root);
     name_errors.extend(validate_test_functions(db, root));
 
@@ -2120,6 +2736,49 @@ pub fn validate_hir(db: &dyn Db, root: baml_workspace::Project) -> HirValidation
         hir_diagnostics,
         name_errors,
     }
+}
+
+/// Validate that retry policy references in clients point to existing policies.
+fn validate_retry_policy_refs(db: &dyn Db, root: baml_workspace::Project) -> Vec<HirDiagnostic> {
+    // Collect all retry policy names across all files.
+    let mut known_policies: rustc_hash::FxHashSet<Name> = rustc_hash::FxHashSet::default();
+    for file in root.files(db) {
+        let items_struct = file_items(db, *file);
+        for item in items_struct.items(db) {
+            if let ItemId::RetryPolicy(rp_loc) = item {
+                let item_tree = file_item_tree(db, rp_loc.file(db));
+                let rp = &item_tree[rp_loc.id(db)];
+                known_policies.insert(rp.name.clone());
+            }
+        }
+    }
+
+    // Check each client's retry_policy_name against the known set.
+    let mut errors = Vec::new();
+    for file in root.files(db) {
+        let items_struct = file_items(db, *file);
+        let file_id = file.file_id(db);
+        for item in items_struct.items(db) {
+            if let ItemId::Client(client_loc) = item {
+                let item_tree = file_item_tree(db, client_loc.file(db));
+                let client = &item_tree[client_loc.id(db)];
+                if let Some(ref policy_name) = client.retry_policy_name {
+                    if !known_policies.contains(policy_name) {
+                        let span = client
+                            .retry_policy_span
+                            .map(|range| Span::new(file_id, range))
+                            .unwrap_or_else(|| Span::new(file_id, TextRange::empty(0.into())));
+                        errors.push(HirDiagnostic::UnknownRetryPolicy {
+                            client_name: client.name.to_string(),
+                            policy_name: policy_name.to_string(),
+                            span,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    errors
 }
 
 fn validate_test_functions(db: &dyn Db, root: baml_workspace::Project) -> Vec<NameError> {
@@ -2158,20 +2817,12 @@ fn validate_test_functions(db: &dyn Db, root: baml_workspace::Project) -> Vec<Na
 /// targeting the same function are considered duplicates.
 fn validate_duplicate_names(db: &dyn Db, root: baml_workspace::Project) -> Vec<NameError> {
     fn item_name_key(db: &dyn Db, file: SourceFile, name: &Name) -> Name {
-        match file_namespace(db, file) {
-            None => name.clone(),
-            Some(namespace_segments) => {
-                if namespace_segments
-                    .first()
-                    .is_some_and(|s| s.as_str() == "baml")
-                {
-                    let path = namespace_segments[1..].to_vec();
-                    QualifiedName::baml_std(path, name.clone()).display_name()
-                } else {
-                    QualifiedName::user_module(namespace_segments, name.clone()).display_name()
-                }
-            }
+        let namespace = file_namespace(db, file).unwrap_or(Namespace::Local);
+        QualifiedName {
+            namespace,
+            name: name.clone(),
         }
+        .display_name()
     }
 
     let items = project_items(db, root);
@@ -2322,6 +2973,23 @@ fn validate_duplicate_names(db: &dyn Db, root: baml_workspace::Project) -> Vec<N
                     span,
                     path,
                 );
+            }
+            ItemId::RetryPolicy(loc) => {
+                let file = loc.file(db);
+                let item_tree = file_item_tree(db, file);
+                let local_id = loc.id(db);
+                let rp = &item_tree[local_id];
+                let name_key = item_name_key(db, file, &rp.name);
+                let span = get_item_name_span(
+                    db,
+                    file,
+                    "retry_policy",
+                    rp.name.as_str(),
+                    local_id.index(),
+                )
+                .unwrap_or_else(|| Span::new(file.file_id(db), TextRange::empty(0.into())));
+                let path = file.path(db).display().to_string();
+                check_duplicate(&mut seen, &mut errors, name_key, "retry_policy", span, path);
             }
         }
     }
@@ -2640,9 +3308,9 @@ fn check_duplicate(
 /// Extract the base type name from a `TypeRef`, unwrapping Optional, List, etc.
 fn get_base_type_name(type_ref: &TypeRef) -> Option<String> {
     match type_ref {
-        TypeRef::Path(path) => path.last_segment().map(std::string::ToString::to_string),
-        TypeRef::Optional(inner) => get_base_type_name(inner),
-        TypeRef::List(inner) => get_base_type_name(inner),
+        TypeRef::Path(path, _) => path.last_segment().map(std::string::ToString::to_string),
+        TypeRef::Optional(inner, _) => get_base_type_name(inner),
+        TypeRef::List(inner, _) => get_base_type_name(inner),
         TypeRef::Generic { base, .. } => get_base_type_name(base),
         _ => None,
     }
@@ -2897,6 +3565,59 @@ pub fn get_item_name_span(
     None
 }
 
+/// Validate that user-defined items don't use the reserved `stream_` prefix.
+///
+/// The `stream_` prefix is reserved for compiler-generated streaming types.
+/// This checks the raw lowered items (before PPIR injection) so we only
+/// flag user-authored items, not generated ones.
+fn validate_stream_prefix(db: &dyn Db, root: baml_workspace::Project) -> Vec<HirDiagnostic> {
+    let mut errors = Vec::new();
+
+    for file in root.files(db) {
+        // Check raw lowered items (without stream_* injection)
+        let lowering = file_lowering(db, *file);
+        let raw_tree = lowering.item_tree(db);
+
+        for (id, class) in raw_tree.iter_classes() {
+            if class.name.starts_with("stream_") {
+                let span = get_item_name_span(db, *file, "class", &class.name, id.index())
+                    .unwrap_or_else(|| Span::new(file.file_id(db), TextRange::empty(0.into())));
+                errors.push(HirDiagnostic::ReservedStreamPrefix {
+                    item_kind: "class",
+                    item_name: class.name.to_string(),
+                    span,
+                });
+            }
+        }
+
+        for (id, alias) in raw_tree.iter_type_aliases() {
+            if alias.name.starts_with("stream_") {
+                let span = get_item_name_span(db, *file, "type alias", &alias.name, id.index())
+                    .unwrap_or_else(|| Span::new(file.file_id(db), TextRange::empty(0.into())));
+                errors.push(HirDiagnostic::ReservedStreamPrefix {
+                    item_kind: "type alias",
+                    item_name: alias.name.to_string(),
+                    span,
+                });
+            }
+        }
+
+        for (id, enum_def) in raw_tree.iter_enums() {
+            if enum_def.name.starts_with("stream_") {
+                let span = get_item_name_span(db, *file, "enum", &enum_def.name, id.index())
+                    .unwrap_or_else(|| Span::new(file.file_id(db), TextRange::empty(0.into())));
+                errors.push(HirDiagnostic::ReservedStreamPrefix {
+                    item_kind: "enum",
+                    item_name: enum_def.name.to_string(),
+                    span,
+                });
+            }
+        }
+    }
+
+    errors
+}
+
 /// Validate that field names and function parameters don't use reserved keywords.
 ///
 /// This checks:
@@ -3049,12 +3770,21 @@ fn validate_reserved_names(db: &dyn Db, root: baml_workspace::Project) -> Vec<Hi
         }
     }
 
-    // Check function parameters
+    // Check function parameters (skip synthetic render_prompt/build_request variants)
     for item in items.items(db) {
         if let ItemId::Function(loc) = item {
             let file = loc.file(db);
             let item_tree = file_item_tree(db, file);
             let func = &item_tree[loc.id(db)];
+            if matches!(
+                &func.compiler_generated,
+                Some(
+                    item_tree::CompilerGenerated::LlmRenderPrompt { .. }
+                        | item_tree::CompilerGenerated::LlmBuildRequest { .. }
+                )
+            ) {
+                continue;
+            }
             let sig = function_signature(db, *loc);
 
             for param in &sig.params {
@@ -3178,7 +3908,7 @@ pub fn definition_name_span(db: &dyn Db, def: Definition<'_>) -> Span {
         }
     };
 
-    get_item_name_span(db, file, kind, name.as_str(), index)
+    get_item_name_span(db, file, kind, &name, index)
         .unwrap_or_else(|| Span::new(file.file_id(db), TextRange::empty(0.into())))
 }
 

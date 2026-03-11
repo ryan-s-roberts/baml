@@ -1,238 +1,219 @@
 ---
-source: target/debug/build/baml_tests-6b46971f444a527b/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
-=== BYTECODE ===
-Functions: 11
-Objects: 82
-Globals: 58
+function Ambiguous(input: string) -> string {
+    load_const "Ambiguous"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.call_llm_function
+    return
+}
 
-Function Ambiguous (arity: 1, kind: Bytecode):
-     0   LOAD_GLOBAL 49   (<fn baml.llm.call_llm_function>)
-     1   LOAD_CONST 0     ("Ambiguous")
-     2   LOAD_VAR 1       (input)
-     3   LOAD_CONST 1     ("input")
-     4   ALLOC_MAP 1      
-     5   CALL 2           
-     6   RETURN           
+function Ambiguous.build_request(input: string) -> baml.http.Request {
+    load_const "Ambiguous"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.build_request
+    return
+}
 
-Function AnotherLLM (arity: 1, kind: Bytecode):
-     0   LOAD_GLOBAL 49   (<fn baml.llm.call_llm_function>)
-     1   LOAD_CONST 0     ("AnotherLLM")
-     2   LOAD_VAR 1       (input)
-     3   LOAD_CONST 1     ("input")
-     4   ALLOC_MAP 1      
-     5   CALL 2           
-     6   RETURN           
+function Ambiguous.render_prompt(input: string) -> baml.llm.PromptAst {
+    load_const "Ambiguous"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.render_prompt
+    return
+}
 
-Function ChainedProcess (arity: 1, kind: Bytecode):
-     0   LOAD_GLOBAL 49   (<fn baml.llm.call_llm_function>)
-     1   LOAD_CONST 0     ("ChainedProcess")
-     2   LOAD_VAR 1       (input)
-     3   LOAD_CONST 1     ("input")
-     4   ALLOC_MAP 1      
-     5   CALL 2           
-     6   RETURN           
+function AnotherLLM(input: string) -> string {
+    load_const "AnotherLLM"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.call_llm_function
+    return
+}
 
-Function ExtractData (arity: 1, kind: Bytecode):
-     0   LOAD_GLOBAL 49   (<fn baml.llm.call_llm_function>)
-     1   LOAD_CONST 0     ("ExtractData")
-     2   LOAD_VAR 1       (text)
-     3   LOAD_CONST 1     ("text")
-     4   ALLOC_MAP 1      
-     5   CALL 2           
-     6   RETURN           
+function AnotherLLM.build_request(input: string) -> baml.http.Request {
+    load_const "AnotherLLM"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.build_request
+    return
+}
 
-Function LLMAnalyze (arity: 1, kind: Bytecode):
-     0   LOAD_GLOBAL 49   (<fn baml.llm.call_llm_function>)
-     1   LOAD_CONST 0     ("LLMAnalyze")
-     2   LOAD_VAR 1       (text)
-     3   LOAD_CONST 1     ("text")
-     4   ALLOC_MAP 1      
-     5   CALL 2           
-     6   RETURN           
+function AnotherLLM.render_prompt(input: string) -> baml.llm.PromptAst {
+    load_const "AnotherLLM"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.render_prompt
+    return
+}
 
-Function ProcessAnalysis (arity: 1, kind: Bytecode):
-     0    LOAD_CONST 0           (null)
-     1    LOAD_VAR 1             (analysis)
-     2    LOAD_FIELD 2           
-     3    STORE_VAR 2            (score)
-     4    LOAD_VAR 2             (score)
-     5    LOAD_CONST 1           (0.8)
-     6    CMP_OP >               
-     7    POP_JUMP_IF_FALSE +2   (to 9)
-     8    JUMP +26               (to 34)
-     9    LOAD_VAR 2             (score)
-     10   LOAD_CONST 2           (0.5)
-     11   CMP_OP >               
-     12   POP_JUMP_IF_FALSE +2   (to 14)
-     13   JUMP +16               (to 29)
-     14   LOAD_VAR 2             (score)
-     15   LOAD_CONST 3           (0.2)
-     16   CMP_OP >               
-     17   POP_JUMP_IF_FALSE +2   (to 19)
-     18   JUMP +6                (to 24)
-     19   LOAD_CONST 4           ("Negative: ")
-     20   LOAD_VAR 1             (analysis)
-     21   LOAD_FIELD 0           
-     22   BIN_OP +               
-     23   RETURN                 
-     24   LOAD_CONST 5           ("Neutral: ")
-     25   LOAD_VAR 1             (analysis)
-     26   LOAD_FIELD 0           
-     27   BIN_OP +               
-     28   RETURN                 
-     29   LOAD_CONST 6           ("Positive: ")
-     30   LOAD_VAR 1             (analysis)
-     31   LOAD_FIELD 0           
-     32   BIN_OP +               
-     33   RETURN                 
-     34   LOAD_CONST 7           ("Very positive: ")
-     35   LOAD_VAR 1             (analysis)
-     36   LOAD_FIELD 0           
-     37   BIN_OP +               
-     38   RETURN                 
+function ChainedProcess(input: string) -> string {
+    load_const "ChainedProcess"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.call_llm_function
+    return
+}
 
-Function ProcessData (arity: 1, kind: Bytecode):
-     0    LOAD_VAR 1             (data)
-     1    LOAD_FIELD 0           
-     2    LOAD_VAR 1             (data)
-     3    LOAD_FIELD 1           
-     4    BIN_OP +               
-     5    LOAD_CONST 0           (100)
-     6    CMP_OP >               
-     7    POP_JUMP_IF_FALSE +2   (to 9)
-     8    JUMP +3                (to 11)
-     9    LOAD_CONST 1           ("low")
-     10   RETURN                 
-     11   LOAD_CONST 2           ("high")
-     12   RETURN                 
+function ChainedProcess.build_request(input: string) -> baml.http.Request {
+    load_const "ChainedProcess"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.build_request
+    return
+}
 
-Function SimpleCalc (arity: 2, kind: Bytecode):
-     0   LOAD_VAR 1     (a)
-     1   LOAD_VAR 2     (b)
-     2   LOAD_CONST 0   (2)
-     3   BIN_OP *       
-     4   BIN_OP +       
-     5   RETURN         
+function ChainedProcess.render_prompt(input: string) -> baml.llm.PromptAst {
+    load_const "ChainedProcess"
+    load_var input
+    load_const "input"
+    alloc_map 1
+    call baml.llm.render_prompt
+    return
+}
 
-Function baml.llm.build_request (arity: 2, kind: Bytecode):
-     0    LOAD_CONST 0        (null)
-     1    LOAD_CONST 0        (null)
-     2    LOAD_CONST 0        (null)
-     3    LOAD_CONST 0        (null)
-     4    LOAD_GLOBAL 43      (<fn baml.llm.get_jinja_template>)
-     5    LOAD_VAR 1          (function_name)
-     6    DISPATCH_FUTURE 1   
-     7    AWAIT               
-     8    STORE_VAR 3         (jinja_string)
-     9    LOAD_GLOBAL 46      (<fn baml.llm.get_client_function>)
-     10   LOAD_VAR 1          (function_name)
-     11   DISPATCH_FUTURE 1   
-     12   AWAIT               
-     13   CALL 0              
-     14   STORE_VAR 4         (primitive_client)
-     15   LOAD_GLOBAL 45      (<fn baml.llm.PrimitiveClient.render_prompt>)
-     16   LOAD_VAR 4          (primitive_client)
-     17   LOAD_VAR 3          (jinja_string)
-     18   LOAD_VAR 2          (args)
-     19   DISPATCH_FUTURE 3   
-     20   AWAIT               
-     21   STORE_VAR 5         (prompt)
-     22   LOAD_GLOBAL 35      (<fn baml.llm.PrimitiveClient.specialize_prompt>)
-     23   LOAD_VAR 4          (primitive_client)
-     24   LOAD_VAR 5          (prompt)
-     25   DISPATCH_FUTURE 2   
-     26   AWAIT               
-     27   STORE_VAR 6         (specialized_prompt)
-     28   LOAD_GLOBAL 36      (<fn baml.llm.PrimitiveClient.build_request>)
-     29   LOAD_VAR 4          (primitive_client)
-     30   LOAD_VAR 6          (specialized_prompt)
-     31   DISPATCH_FUTURE 2   
-     32   AWAIT               
-     33   RETURN              
+function ExtractData(text: string) -> JsonData {
+    load_const "ExtractData"
+    load_var text
+    load_const "text"
+    alloc_map 1
+    call baml.llm.call_llm_function
+    return
+}
 
-Function baml.llm.call_llm_function (arity: 2, kind: Bytecode):
-     0    LOAD_CONST 0        (null)
-     1    LOAD_CONST 0        (null)
-     2    LOAD_CONST 0        (null)
-     3    LOAD_CONST 0        (null)
-     4    LOAD_CONST 0        (null)
-     5    LOAD_CONST 0        (null)
-     6    LOAD_CONST 0        (null)
-     7    LOAD_GLOBAL 43      (<fn baml.llm.get_jinja_template>)
-     8    LOAD_VAR 1          (function_name)
-     9    DISPATCH_FUTURE 1   
-     10   AWAIT               
-     11   STORE_VAR 3         (jinja_string)
-     12   LOAD_GLOBAL 46      (<fn baml.llm.get_client_function>)
-     13   LOAD_VAR 1          (function_name)
-     14   DISPATCH_FUTURE 1   
-     15   AWAIT               
-     16   CALL 0              
-     17   STORE_VAR 4         (primitive_client)
-     18   LOAD_GLOBAL 45      (<fn baml.llm.PrimitiveClient.render_prompt>)
-     19   LOAD_VAR 4          (primitive_client)
-     20   LOAD_VAR 3          (jinja_string)
-     21   LOAD_VAR 2          (args)
-     22   DISPATCH_FUTURE 3   
-     23   AWAIT               
-     24   STORE_VAR 5         (prompt)
-     25   LOAD_GLOBAL 35      (<fn baml.llm.PrimitiveClient.specialize_prompt>)
-     26   LOAD_VAR 4          (primitive_client)
-     27   LOAD_VAR 5          (prompt)
-     28   DISPATCH_FUTURE 2   
-     29   AWAIT               
-     30   STORE_VAR 6         (specialized_prompt)
-     31   LOAD_GLOBAL 36      (<fn baml.llm.PrimitiveClient.build_request>)
-     32   LOAD_VAR 4          (primitive_client)
-     33   LOAD_VAR 6          (specialized_prompt)
-     34   DISPATCH_FUTURE 2   
-     35   AWAIT               
-     36   STORE_VAR 7         (http_request)
-     37   LOAD_GLOBAL 33      (<fn baml.http.send>)
-     38   LOAD_VAR 7          (http_request)
-     39   DISPATCH_FUTURE 1   
-     40   AWAIT               
-     41   STORE_VAR 8         (http_response)
-     42   LOAD_GLOBAL 30      (<fn baml.http.Response.text>)
-     43   LOAD_VAR 8          (http_response)
-     44   DISPATCH_FUTURE 1   
-     45   AWAIT               
-     46   STORE_VAR 9         (result)
-     47   LOAD_GLOBAL 37      (<fn baml.llm.PrimitiveClient.parse>)
-     48   LOAD_VAR 4          (primitive_client)
-     49   LOAD_VAR 9          (result)
-     50   LOAD_VAR 1          (function_name)
-     51   DISPATCH_FUTURE 3   
-     52   AWAIT               
-     53   RETURN              
+function ExtractData.build_request(text: string) -> baml.http.Request {
+    load_const "ExtractData"
+    load_var text
+    load_const "text"
+    alloc_map 1
+    call baml.llm.build_request
+    return
+}
 
-Function baml.llm.render_prompt (arity: 2, kind: Bytecode):
-     0    LOAD_CONST 0        (null)
-     1    LOAD_CONST 0        (null)
-     2    LOAD_CONST 0        (null)
-     3    LOAD_GLOBAL 43      (<fn baml.llm.get_jinja_template>)
-     4    LOAD_VAR 1          (function_name)
-     5    DISPATCH_FUTURE 1   
-     6    AWAIT               
-     7    STORE_VAR 3         (jinja_string)
-     8    LOAD_GLOBAL 46      (<fn baml.llm.get_client_function>)
-     9    LOAD_VAR 1          (function_name)
-     10   DISPATCH_FUTURE 1   
-     11   AWAIT               
-     12   CALL 0              
-     13   STORE_VAR 4         (primitive_client)
-     14   LOAD_GLOBAL 45      (<fn baml.llm.PrimitiveClient.render_prompt>)
-     15   LOAD_VAR 4          (primitive_client)
-     16   LOAD_VAR 3          (jinja_string)
-     17   LOAD_VAR 2          (args)
-     18   DISPATCH_FUTURE 3   
-     19   AWAIT               
-     20   STORE_VAR 5         (prompt)
-     21   LOAD_GLOBAL 35      (<fn baml.llm.PrimitiveClient.specialize_prompt>)
-     22   LOAD_VAR 4          (primitive_client)
-     23   LOAD_VAR 5          (prompt)
-     24   DISPATCH_FUTURE 2   
-     25   AWAIT               
-     26   RETURN
+function ExtractData.render_prompt(text: string) -> baml.llm.PromptAst {
+    load_const "ExtractData"
+    load_var text
+    load_const "text"
+    alloc_map 1
+    call baml.llm.render_prompt
+    return
+}
+
+function LLMAnalyze(text: string) -> Analysis {
+    load_const "LLMAnalyze"
+    load_var text
+    load_const "text"
+    alloc_map 1
+    call baml.llm.call_llm_function
+    return
+}
+
+function LLMAnalyze.build_request(text: string) -> baml.http.Request {
+    load_const "LLMAnalyze"
+    load_var text
+    load_const "text"
+    alloc_map 1
+    call baml.llm.build_request
+    return
+}
+
+function LLMAnalyze.render_prompt(text: string) -> baml.llm.PromptAst {
+    load_const "LLMAnalyze"
+    load_var text
+    load_const "text"
+    alloc_map 1
+    call baml.llm.render_prompt
+    return
+}
+
+function ProcessAnalysis(analysis: Analysis) -> string {
+    load_var analysis
+    load_field .score
+    store_var score
+    load_var score
+    load_const 0.8
+    cmp_op >
+    pop_jump_if_false L0
+    jump L5
+
+  L0:
+    load_var score
+    load_const 0.5
+    cmp_op >
+    pop_jump_if_false L1
+    jump L4
+
+  L1:
+    load_var score
+    load_const 0.2
+    cmp_op >
+    pop_jump_if_false L2
+    jump L3
+
+  L2:
+    load_const "Negative: "
+    load_var analysis
+    load_field .sentiment
+    bin_op +
+    return
+
+  L3:
+    load_const "Neutral: "
+    load_var analysis
+    load_field .sentiment
+    bin_op +
+    return
+
+  L4:
+    load_const "Positive: "
+    load_var analysis
+    load_field .sentiment
+    bin_op +
+    return
+
+  L5:
+    load_const "Very positive: "
+    load_var analysis
+    load_field .sentiment
+    bin_op +
+    return
+}
+
+function ProcessData(data: JsonData) -> string {
+    load_var data
+    load_field .field1
+    load_var data
+    load_field .field2
+    bin_op +
+    load_const 100
+    cmp_op >
+    pop_jump_if_false L0
+    jump L1
+
+  L0:
+    load_const "low"
+    return
+
+  L1:
+    load_const "high"
+    return
+}
+
+function SimpleCalc(a: int, b: int) -> int {
+    load_var a
+    load_var b
+    load_const 2
+    bin_op *
+    bin_op +
+    return
+}

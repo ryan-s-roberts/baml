@@ -3,31 +3,13 @@
 //! This module provides APIs for listing symbols (functions, classes, enums, etc.)
 //! in a BAML project.
 
-use std::path::PathBuf;
-
+pub use baml_db::baml_compiler_hir::SymbolKind;
 use baml_db::{
     Name, Span,
     baml_compiler_hir::{self, Db, ItemId, file_item_tree, project_items},
     baml_workspace::Project,
 };
 use text_size::TextRange;
-
-/// The kind of a symbol.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SymbolKind {
-    Function,
-    Class,
-    Enum,
-    TypeAlias,
-    Client,
-    Test,
-    Generator,
-    TemplateString,
-    /// A field within a class.
-    Field,
-    /// A variant within an enum.
-    EnumVariant,
-}
 
 /// Information about a symbol in the project.
 #[derive(Debug, Clone)]
@@ -37,7 +19,7 @@ pub struct Symbol {
     /// The kind of symbol.
     pub kind: SymbolKind,
     /// The file path containing the symbol.
-    pub file_path: PathBuf,
+    pub file_path: std::path::PathBuf,
     /// The span of the symbol in the source.
     pub span: Span,
 }
@@ -421,6 +403,25 @@ fn item_to_symbol(db: &dyn Db, item: ItemId<'_>, name_to_find: &Name) -> Option<
                 Some(Symbol {
                     name: ts.name.to_string(),
                     kind: SymbolKind::TemplateString,
+                    file_path,
+                    span,
+                })
+            } else {
+                None
+            }
+        }
+        ItemId::RetryPolicy(rp_loc) => {
+            let file = rp_loc.file(db);
+            let item_tree = file_item_tree(db, file);
+            let rp = &item_tree[rp_loc.id(db)];
+
+            if &rp.name == name_to_find {
+                let file_path = file.path(db);
+                let span = Span::new(file.file_id(db), TextRange::empty(0.into()));
+
+                Some(Symbol {
+                    name: rp.name.to_string(),
+                    kind: SymbolKind::RetryPolicy,
                     file_path,
                     span,
                 })

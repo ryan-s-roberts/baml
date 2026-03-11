@@ -30,8 +30,8 @@ use la_arena::Arena;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    AssignOp, BinaryOp, Expr, ExprBody, ExprId, Literal, MatchArm, PatId, Pattern, SpreadField, Ty,
-    UnaryOp,
+    AssignOp, BinaryOp, CatchArm, CatchClause, CatchClauseKind, Expr, ExprBody, ExprId, Literal,
+    MatchArm, PatId, Pattern, SpreadField, Ty, UnaryOp,
 };
 
 /// Error that occurs when lowering HIR to VIR.
@@ -58,11 +58,20 @@ pub enum LoweringError {
     LlmFunction,
     /// No root expression in the body.
     NoRootExpression,
+    /// Invalid retry policy value encountered during compilation metadata extraction.
+    InvalidRetryPolicyValue {
+        policy_name: String,
+        field_name: String,
+        value: String,
+        reason: String,
+    },
     /// Error occurred while lowering a specific function.
     InFunction {
         function_name: String,
         error: Box<LoweringError>,
     },
+    /// The project has diagnostics errors and cannot be compiled.
+    HasDiagnosticsErrors,
 }
 
 impl LoweringError {
@@ -110,11 +119,26 @@ impl std::fmt::Display for LoweringError {
             LoweringError::MissingBody => write!(f, "function body is missing"),
             LoweringError::LlmFunction => write!(f, "LLM function - no MIR"),
             LoweringError::NoRootExpression => write!(f, "no root expression in body"),
+            LoweringError::InvalidRetryPolicyValue {
+                policy_name,
+                field_name,
+                value,
+                reason,
+            } => write!(
+                f,
+                "invalid retry policy value: `{policy_name}.{field_name}` = `{value}` ({reason})"
+            ),
             LoweringError::InFunction {
                 function_name,
                 error,
             } => {
                 write!(f, "in function '{function_name}': {error}")
+            }
+            LoweringError::HasDiagnosticsErrors => {
+                write!(
+                    f,
+                    "the project has diagnostics errors and cannot be compiled"
+                )
             }
         }
     }
@@ -171,6 +195,13 @@ pub fn lower_from_hir(
 /// Sentinel value for dangling Let scopes (body not yet filled in).
 const DANGLING_SCOPE: u32 = u32::MAX;
 
+/// Default Null type used as a fallback in expression type lookups.
+fn ty_null_default() -> Ty {
+    Ty::Null {
+        attr: baml_type::TyAttr::default(),
+    }
+}
+
 /// Builder for constructing `ExprBody`.
 struct ExprBodyBuilder {
     exprs: Arena<Expr>,
@@ -178,6 +209,7 @@ struct ExprBodyBuilder {
     expr_types: FxHashMap<ExprId, Ty>,
     enum_variant_exprs: FxHashMap<ExprId, (baml_base::Name, baml_base::Name)>,
     resolutions: FxHashMap<ExprId, baml_compiler_tir::ResolvedValue>,
+    source_spans: FxHashMap<ExprId, Span>,
 }
 
 impl ExprBodyBuilder {
@@ -188,6 +220,7 @@ impl ExprBodyBuilder {
             expr_types: FxHashMap::default(),
             enum_variant_exprs: FxHashMap::default(),
             resolutions: FxHashMap::default(),
+            source_spans: FxHashMap::default(),
         }
     }
 
@@ -202,11 +235,19 @@ impl ExprBodyBuilder {
     }
 
     fn alloc_unit(&mut self) -> ExprId {
-        self.alloc(Expr::Unit, Ty::Void)
+        self.alloc(
+            Expr::Unit,
+            Ty::Void {
+                attr: baml_type::TyAttr::default(),
+            },
+        )
     }
 
-    fn ty(&self, id: ExprId) -> &Ty {
-        self.expr_types.get(&id).unwrap_or(&Ty::Null)
+    fn ty(&self, id: ExprId) -> Ty {
+        self.expr_types
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(ty_null_default)
     }
 
     fn finish(self, root: ExprId) -> ExprBody {
@@ -216,8 +257,13 @@ impl ExprBodyBuilder {
             expr_types: self.expr_types,
             enum_variant_exprs: self.enum_variant_exprs,
             resolutions: self.resolutions,
+            source_spans: self.source_spans,
             root,
         }
+    }
+
+    fn record_source_span(&mut self, id: ExprId, span: Span) {
+        self.source_spans.insert(id, span);
     }
 
     fn record_enum_variant(
@@ -282,9 +328,11 @@ impl<'a> LoweringContext<'a> {
 
         // Get type from TIR inference
         let tir_ty = self.inference.expr_types.get(&hir_id);
-        let ty = tir_ty.map(|ty| self.lower_ty(ty)).unwrap_or(Ty::Null);
+        let ty = tir_ty.map(|ty| self.lower_ty(ty)).unwrap_or(Ty::Null {
+            attr: baml_type::TyAttr::default(),
+        });
 
-        match hir_expr {
+        let result = match hir_expr {
             HirExpr::Missing => {
                 let span = self.source_map.expr_span(hir_id).unwrap_or_default();
                 Err(LoweringError::MissingExpression { span })
@@ -526,7 +574,44 @@ impl<'a> LoweringContext<'a> {
                 self.weave_block(stmts, *tail_expr, hir_body)
             }
 
-            HirExpr::Match { scrutinee, arms } => {
+            HirExpr::Catch { base, clauses } => {
+                let base_id = self.lower_expr(*base, hir_body)?;
+                let mut lowered_clauses = Vec::with_capacity(clauses.len());
+                for clause in clauses {
+                    let binding_id = self.lower_pattern(clause.binding, hir_body)?;
+                    let mut lowered_arms = Vec::with_capacity(clause.arms.len());
+                    for arm_id in &clause.arms {
+                        let arm = &hir_body.catch_arms[*arm_id];
+                        let pattern_id = self.lower_pattern(arm.pattern, hir_body)?;
+                        let body = self.lower_expr(arm.body, hir_body)?;
+                        lowered_arms.push(CatchArm {
+                            pattern: pattern_id,
+                            body,
+                        });
+                    }
+                    lowered_clauses.push(CatchClause {
+                        kind: CatchClauseKind::from(clause.kind),
+                        binding: binding_id,
+                        arms: lowered_arms,
+                    });
+                }
+                Ok(self.builder.alloc(
+                    Expr::Catch {
+                        base: base_id,
+                        clauses: lowered_clauses,
+                    },
+                    ty,
+                ))
+            }
+
+            HirExpr::Throw { value } => {
+                let value_id = self.lower_expr(*value, hir_body)?;
+                Ok(self.builder.alloc(Expr::Throw { value: value_id }, ty))
+            }
+
+            HirExpr::Match {
+                scrutinee, arms, ..
+            } => {
                 let scrutinee_id = self.lower_expr(*scrutinee, hir_body)?;
                 let mut lowered_arms = Vec::with_capacity(arms.len());
                 for arm_id in arms {
@@ -554,7 +639,16 @@ impl<'a> LoweringContext<'a> {
                     ty,
                 ))
             }
+        };
+
+        // Record source span from HIR source map onto VIR expression.
+        if let Ok(vir_id) = &result {
+            if let Some(span) = self.source_map.expr_span(hir_id) {
+                self.builder.record_source_span(*vir_id, span);
+            }
         }
+
+        result
     }
 
     /// Weave a block's statements and optional tail expression into Let/Seq chains.
@@ -615,13 +709,13 @@ impl<'a> LoweringContext<'a> {
             // Fill in the dangling scope with result
             self.fill_let_body(curr, result);
             // Update the Let's type to match the body's type
-            let result_ty = self.builder.ty(result).clone();
+            let result_ty = self.builder.ty(result);
             self.builder.expr_types.insert(curr, result_ty);
             return curr;
         }
 
         // Not a dangling Let - wrap with Seq
-        let result_ty = self.builder.ty(result).clone();
+        let result_ty = self.builder.ty(result);
         self.builder.alloc(
             Expr::Seq {
                 first: curr,
@@ -645,7 +739,12 @@ impl<'a> LoweringContext<'a> {
         if self.is_dangling_let(expr_id) {
             let unit = self.builder.alloc_unit();
             self.fill_let_body(expr_id, unit);
-            self.builder.expr_types.insert(expr_id, Ty::Void);
+            self.builder.expr_types.insert(
+                expr_id,
+                Ty::Void {
+                    attr: baml_type::TyAttr::default(),
+                },
+            );
         }
     }
 
@@ -666,7 +765,7 @@ impl<'a> LoweringContext<'a> {
 
         let stmt = &hir_body.stmts[stmt_id];
 
-        match stmt {
+        let result = match stmt {
             HirStmt::Missing => {
                 let span = self.source_map.stmt_span(stmt_id).unwrap_or_default();
                 Err(LoweringError::MissingStatement { span })
@@ -691,9 +790,13 @@ impl<'a> LoweringContext<'a> {
                         .expr_types
                         .get(init)
                         .map(|ty| self.lower_ty(ty))
-                        .unwrap_or(Ty::Null)
+                        .unwrap_or(Ty::Null {
+                            attr: baml_type::TyAttr::default(),
+                        })
                 } else {
-                    Ty::Null
+                    Ty::Null {
+                        attr: baml_type::TyAttr::default(),
+                    }
                 };
 
                 // Lower the initializer (or unit if missing)
@@ -714,7 +817,9 @@ impl<'a> LoweringContext<'a> {
                         body: dangling_body,
                         is_watched: *is_watched,
                     },
-                    Ty::Null, // Will be updated when body is filled
+                    Ty::Null {
+                        attr: baml_type::TyAttr::default(),
+                    }, // Will be updated when body is filled
                 ))
             }
 
@@ -742,7 +847,9 @@ impl<'a> LoweringContext<'a> {
                         condition: cond,
                         body: final_body,
                     },
-                    Ty::Void,
+                    Ty::Void {
+                        attr: baml_type::TyAttr::default(),
+                    },
                 ))
             }
 
@@ -751,12 +858,27 @@ impl<'a> LoweringContext<'a> {
                     Some(e) => Some(self.lower_expr(*e, hir_body)?),
                     None => None,
                 };
-                Ok(self.builder.alloc(Expr::Return(ret_expr), Ty::Void))
+                Ok(self.builder.alloc(
+                    Expr::Return(ret_expr),
+                    Ty::Void {
+                        attr: baml_type::TyAttr::default(),
+                    },
+                ))
             }
 
-            HirStmt::Break => Ok(self.builder.alloc(Expr::Break, Ty::Void)),
+            HirStmt::Break => Ok(self.builder.alloc(
+                Expr::Break,
+                Ty::Void {
+                    attr: baml_type::TyAttr::default(),
+                },
+            )),
 
-            HirStmt::Continue => Ok(self.builder.alloc(Expr::Continue, Ty::Void)),
+            HirStmt::Continue => Ok(self.builder.alloc(
+                Expr::Continue,
+                Ty::Void {
+                    attr: baml_type::TyAttr::default(),
+                },
+            )),
 
             HirStmt::Assign { target, value } => {
                 let target_id = self.lower_expr(*target, hir_body)?;
@@ -766,7 +888,9 @@ impl<'a> LoweringContext<'a> {
                         target: target_id,
                         value: value_id,
                     },
-                    Ty::Void,
+                    Ty::Void {
+                        attr: baml_type::TyAttr::default(),
+                    },
                 ))
             }
 
@@ -779,7 +903,9 @@ impl<'a> LoweringContext<'a> {
                         op: AssignOp::from(*op),
                         value: value_id,
                     },
-                    Ty::Void,
+                    Ty::Void {
+                        attr: baml_type::TyAttr::default(),
+                    },
                 ))
             }
 
@@ -789,7 +915,9 @@ impl<'a> LoweringContext<'a> {
                     Expr::Assert {
                         condition: condition_id,
                     },
-                    Ty::Void,
+                    Ty::Void {
+                        attr: baml_type::TyAttr::default(),
+                    },
                 ))
             }
 
@@ -798,9 +926,30 @@ impl<'a> LoweringContext<'a> {
                     name: name.clone(),
                     level: *level,
                 },
-                Ty::Void,
+                Ty::Void {
+                    attr: baml_type::TyAttr::default(),
+                },
             )),
+
+            HirStmt::Throw { value } => {
+                let value_id = self.lower_expr(*value, hir_body)?;
+                Ok(self.builder.alloc(
+                    Expr::Throw { value: value_id },
+                    Ty::Void {
+                        attr: baml_type::TyAttr::default(),
+                    },
+                ))
+            }
+        };
+
+        // Record source span from HIR source map onto VIR expression.
+        if let Ok(vir_id) = &result {
+            if let Some(span) = self.source_map.stmt_span(stmt_id) {
+                self.builder.record_source_span(*vir_id, span);
+            }
         }
+
+        result
     }
 
     /// Lower a TIR type to the unified `baml_type::Ty`.
@@ -811,8 +960,11 @@ impl<'a> LoweringContext<'a> {
     /// - Literal type preservation (no erasure)
     /// - TIR Unknown/Error → Null (error recovery types don't propagate)
     fn lower_ty(&self, thir_ty: &baml_compiler_tir::Ty) -> Ty {
-        baml_type::convert_tir_ty(thir_ty, self.type_aliases, self.recursive_aliases)
-            .unwrap_or(Ty::Null)
+        baml_type::convert_tir_ty(thir_ty, self.type_aliases, self.recursive_aliases).unwrap_or(
+            Ty::Null {
+                attr: baml_type::TyAttr::default(),
+            },
+        )
     }
 
     /// Lower an HIR `TypeRef` to VIR type.

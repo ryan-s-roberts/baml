@@ -1,5 +1,7 @@
 //! Instruction set and bytecode representation.
 
+use baml_base::Span;
+
 use crate::{GlobalIndex, ObjectIndex, types::ConstValue};
 
 // ============================================================================
@@ -17,6 +19,9 @@ pub struct JumpTableData {
     /// Jump offsets for each value from min to min+len-1.
     /// None means "hole" - should jump to default.
     pub offsets: Vec<Option<isize>>,
+    /// Symbolic names for each table entry (display only).
+    /// Parallel to `offsets`: `names[i]` is the name for value `min + i`.
+    pub names: Vec<Option<String>>,
 }
 
 impl JumpTableData {
@@ -29,6 +34,7 @@ impl JumpTableData {
         Self {
             min,
             offsets: vec![None; size],
+            names: vec![None; size],
         }
     }
 
@@ -40,6 +46,15 @@ impl JumpTableData {
         let index = (value - self.min) as usize;
         if index < self.offsets.len() {
             self.offsets[index] = Some(offset);
+        }
+    }
+
+    /// Set the symbolic name for a specific value.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn set_name(&mut self, value: i64, name: String) {
+        let index = (value - self.min) as usize;
+        if index < self.names.len() {
+            self.names[index] = Some(name);
         }
     }
 
@@ -145,24 +160,6 @@ pub enum Instruction {
     /// `COPY 1` copies the second element from the top.
     Copy(usize),
 
-    /// End a nested block and put the result value on top of the stack.
-    ///
-    /// Format: `POP_REPLACE n` where `n` is the number of locals in the block's
-    /// scope.
-    ///
-    /// This is instruction is necessary to support "blocks as expressions".
-    /// Example:
-    ///
-    /// ```ignore
-    /// fn main() {
-    ///     let a = {
-    ///         let b = 1;
-    ///         b
-    ///     };
-    /// }
-    /// ```
-    PopReplace(usize),
-
     /// Jump to another instruction.
     ///
     /// Format: `JUMP o` where `o` is the offset from the current instruction
@@ -244,19 +241,14 @@ pub enum Instruction {
     /// `Vm::objects` array.
     AllocVariant(ObjectIndex),
 
-    /// Creates a pending future, pushes it on the stack and notifies embedder.
+    /// Dispatch a statically-known global `sys_op` and create a pending future.
     ///
-    /// Format: `DISPATCH_FUTURE n` where `n` is the number of arguments passed
-    /// to the _callable_ future.
+    /// Format: `DISPATCH_FUTURE g` where `g` is the global index of the
+    /// `sys_op` function.
     ///
-    /// [`Instruction::DispatchFuture`] behaves like a function call
-    /// ([`Instruction::Call`]). That is due to the fact that as of right now
-    /// the only "futures" we can really run are LLM calls, and the VM doesn't
-    /// even run those, that's up to the embedder. So, just like a function
-    /// call, the stack should contain the future followed by the arguments, and
-    /// this instruction takes care of emmiting a notification to the embedder
-    /// so that it can schedule the future.
-    DispatchFuture(usize),
+    /// Arguments are pushed onto the eval stack. The callee is read from
+    /// `Vm::globals[g]`, and arity is read from function metadata.
+    DispatchFuture(GlobalIndex),
 
     /// Awaits the future on top of the stack.
     ///
@@ -280,14 +272,45 @@ pub enum Instruction {
     /// Manually triggers notifications for a watched variable.
     Notify(usize),
 
-    /// Call a function.
+    /// Call a statically-known global function.
     ///
-    /// Format: `CALL n` where `n` is the number of arguments passed to the
-    /// function.
+    /// Format: `CALL g` where `g` is the global index of the callee function.
     ///
-    /// Arguments are pushed onto the eval stack and the name of the function
-    /// is right below them.
-    Call(usize),
+    /// Arguments are pushed onto the eval stack. The callee is read from
+    /// `Vm::globals[g]`, and arity is read from function metadata.
+    Call(GlobalIndex),
+
+    /// Call a function value from the eval stack.
+    ///
+    /// Format: `CALL_INDIRECT`.
+    ///
+    /// Stack layout: `[arg1, ..., argN, callee]`.
+    ///
+    /// Arity is read from the runtime callee function object.
+    CallIndirect,
+
+    /// Push an unwind handler for catch semantics.
+    ///
+    /// The handler remains active until a matching `POP_UNWIND` is executed
+    /// or an exception unwinds control flow to `handler`.
+    ///
+    /// Format: `PUSH_UNWIND handler, error_slot` where:
+    /// - `handler` is the relative jump offset to the catch handler block.
+    /// - `error_slot` is the frame-local slot that receives the exception value.
+    PushUnwind {
+        /// Relative offset from current instruction to handler entry.
+        handler: isize,
+        /// Frame-local slot index for the caught error value.
+        error_slot: usize,
+    },
+
+    /// Pop the most recently pushed unwind handler for the current frame.
+    PopUnwind,
+
+    /// Throw the value on top of the stack.
+    ///
+    /// Stack: `[error_value]` -> `[]` (control transfers to unwind handler or caller)
+    Throw,
 
     /// Return from a function.
     ///
@@ -528,7 +551,6 @@ impl std::fmt::Display for Instruction {
             Instruction::StoreField(i) => write!(f, "STORE_FIELD {i}"),
             Instruction::Pop(n) => write!(f, "POP {n}"),
             Instruction::Copy(i) => write!(f, "COPY {i}"),
-            Instruction::PopReplace(n) => write!(f, "POP_REPLACE {n}"),
             Instruction::Jump(o) => write!(f, "JUMP {o:+}"),
             Instruction::PopJumpIfFalse(o) => write!(f, "POP_JUMP_IF_FALSE {o:+}"),
             Instruction::BinOp(op) => write!(f, "BIN_OP {op}"),
@@ -541,9 +563,19 @@ impl std::fmt::Display for Instruction {
             Instruction::StoreMapElement => f.write_str("STORE_MAP_ELEMENT"),
             Instruction::AllocInstance(i) => write!(f, "ALLOC_INSTANCE {i}"),
             Instruction::AllocVariant(i) => write!(f, "ALLOC_VARIANT {i}"),
-            Instruction::DispatchFuture(i) => write!(f, "DISPATCH_FUTURE {i}"),
+            Instruction::DispatchFuture(callee) => write!(f, "DISPATCH_FUTURE {callee}"),
             Instruction::Await => f.write_str("AWAIT"),
-            Instruction::Call(n) => write!(f, "CALL {n}"),
+            Instruction::Call(callee) => write!(f, "CALL {callee}"),
+            Instruction::CallIndirect => f.write_str("CALL_INDIRECT"),
+            Instruction::PushUnwind {
+                handler,
+                error_slot,
+            } => {
+                write!(f, "PUSH_UNWIND {handler:+}, {error_slot}")
+            }
+            Instruction::PopUnwind => f.write_str("POP_UNWIND"),
+            Instruction::Throw => f.write_str("THROW"),
+
             Instruction::Return => f.write_str("RETURN"),
             Instruction::Assert => f.write_str("ASSERT"),
             Instruction::AllocMap(n) => write!(f, "ALLOC_MAP {n}"),
@@ -565,6 +597,78 @@ impl std::fmt::Display for Instruction {
     }
 }
 
+/// Resolved operand name for debug/display purposes.
+///
+/// Populated by the compiler at emit time so that debug display doesn't
+/// need to resolve names from the `ObjectPool` or runtime stack.
+#[derive(Clone, Debug)]
+pub enum OperandMeta {
+    /// `LoadVar`, `StoreVar`, `Watch`, `Unwatch`, `Notify` — variable name.
+    Var(String),
+    /// `LoadField`, `StoreField` — field name.
+    Field(String),
+    /// `Call`, `DispatchFuture` — function name.
+    Callable(String),
+    /// `LoadGlobal`, `StoreGlobal` — display value.
+    Global(String),
+    /// `AllocInstance`, `AllocVariant` — class/enum name.
+    Object(String),
+    /// `LoadConst` — display value.
+    Const(String),
+}
+
+impl OperandMeta {
+    /// Get the inner string regardless of variant.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Var(s)
+            | Self::Field(s)
+            | Self::Callable(s)
+            | Self::Global(s)
+            | Self::Object(s)
+            | Self::Const(s) => s,
+        }
+    }
+}
+
+/// Per-instruction debug metadata, populated by the compiler.
+///
+/// Parallel to `Bytecode::instructions`. Contains resolved operand names for
+/// debug display.
+#[derive(Clone, Debug, Default)]
+pub struct InstructionMeta {
+    /// Resolved operand name (if applicable to the instruction type).
+    pub operand: Option<OperandMeta>,
+}
+
+/// Run-length encoded source mapping entry.
+///
+/// Each entry applies from `pc` (inclusive) until the next entry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineTableEntry {
+    /// Bytecode program counter where this entry begins.
+    pub pc: usize,
+    /// Source span for this bytecode range.
+    pub span: Span,
+    /// 1-indexed source line for quick stack traces/disassembly.
+    pub line: usize,
+    /// True when this entry is a debugger sequence point.
+    pub sequence_point: bool,
+    /// Distinguishes multiple stops on the same line.
+    pub discriminator: u32,
+}
+
+/// Debug metadata for a named local variable and its lexical scope.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DebugLocalScope {
+    /// Stack slot used by this local.
+    pub slot: usize,
+    /// User-facing variable name.
+    pub name: String,
+    /// Source span where this variable is in scope.
+    pub scope_span: Span,
+}
+
 /// Executable bytecode.
 ///
 /// Contains the instructions to run and all the associated constants.
@@ -584,13 +688,15 @@ pub struct Bytecode {
     /// Jump tables for switch dispatch (indexed by `JumpTable` instruction).
     pub jump_tables: Vec<JumpTableData>,
 
-    /// Source line mapping.
+    /// Line table mapping bytecode PCs to source spans.
     ///
-    /// Maps instruction indices to their source line numbers.
-    /// Each element corresponds to an instruction at the same index.
-    pub source_lines: Vec<usize>,
+    /// Entries are run-length encoded by PC ranges.
+    pub line_table: Vec<LineTableEntry>,
 
-    pub scopes: Vec<usize>,
+    /// Per-instruction debug metadata (resolved operand names).
+    ///
+    /// Parallel to `instructions`. Populated by the compiler at emit time.
+    pub meta: Vec<InstructionMeta>,
 }
 
 impl Default for Bytecode {
@@ -606,9 +712,23 @@ impl Bytecode {
             constants: Vec::new(),
             resolved_constants: Vec::new(),
             jump_tables: Vec::new(),
-            source_lines: Vec::new(),
-            scopes: Vec::new(),
+            line_table: Vec::new(),
+            meta: Vec::new(),
         }
+    }
+
+    /// Get the source mapping entry that applies to the given bytecode PC.
+    pub fn line_entry_for_pc(&self, pc: usize) -> Option<&LineTableEntry> {
+        if self.line_table.is_empty() {
+            return None;
+        }
+        let idx = self.line_table.partition_point(|entry| entry.pc <= pc);
+        (idx > 0).then(|| &self.line_table[idx - 1])
+    }
+
+    /// Get the 1-indexed source line for a bytecode PC.
+    pub fn source_line_for_pc(&self, pc: usize) -> usize {
+        self.line_entry_for_pc(pc).map_or(0, |entry| entry.line)
     }
 
     /// Resolve constants from `ConstValue` to Value using a resolver function.

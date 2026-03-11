@@ -13,7 +13,7 @@ use baml_base::{FileId, Name, Span};
 use baml_compiler_diagnostics::ErrorContext;
 use rowan::TextRange;
 
-use crate::{ExprId, MatchArmId, MatchArmSpans, PatId, StmtId, TypeId};
+use crate::{CatchArmId, CatchArmSpans, ExprId, MatchArmId, MatchArmSpans, PatId, StmtId, TypeId};
 
 // ============================================================================
 // Span Resolution Context
@@ -65,6 +65,8 @@ pub enum ErrorLocation {
     Expr(ExprId),
     /// Error at a match arm (for unreachable arm errors).
     MatchArm(MatchArmId),
+    /// Error at a catch arm (for unreachable arm errors).
+    CatchArm(CatchArmId),
     /// Error at a top-level type item (type alias or class).
     ///
     /// Used for validation errors about type definitions (e.g., cycle detection).
@@ -103,6 +105,8 @@ pub enum ErrorLocation {
         /// Offset from template start where the error ends
         end_offset: u32,
     },
+    /// Error at a pattern (e.g., a typed binding in a match arm).
+    Pattern(PatId),
     /// Fallback to a direct span (for errors from signatures or other non-body contexts).
     /// This should be minimized over time as we add more ID-based tracking.
     Span(Span),
@@ -121,6 +125,11 @@ impl ErrorLocation {
             ErrorLocation::MatchArm(id) => ctx
                 .expr_fn_source_map
                 .match_arm_spans(*id)
+                .map(|s| s.arm_span)
+                .unwrap_or_default(),
+            ErrorLocation::CatchArm(id) => ctx
+                .expr_fn_source_map
+                .catch_arm_spans(*id)
                 .map(|s| s.arm_span)
                 .unwrap_or_default(),
             ErrorLocation::TypeItem(name) => ctx
@@ -166,6 +175,9 @@ impl ErrorLocation {
                     Span::default()
                 }
             }
+            ErrorLocation::Pattern(id) => {
+                ctx.expr_fn_source_map.pattern_span(*id).unwrap_or_default()
+            }
             ErrorLocation::Span(span) => *span,
         }
     }
@@ -180,6 +192,12 @@ impl From<ExprId> for ErrorLocation {
 impl From<MatchArmId> for ErrorLocation {
     fn from(id: MatchArmId) -> Self {
         ErrorLocation::MatchArm(id)
+    }
+}
+
+impl From<CatchArmId> for ErrorLocation {
+    fn from(id: CatchArmId) -> Self {
+        ErrorLocation::CatchArm(id)
     }
 }
 
@@ -229,8 +247,20 @@ pub struct HirSourceMap {
     /// Match arm spans
     match_arm_spans: HashMap<MatchArmId, MatchArmSpans>,
 
+    /// Catch arm spans
+    catch_arm_spans: HashMap<CatchArmId, CatchArmSpans>,
+
     /// Type annotation spans
     type_spans: HashMap<TypeId, Span>,
+
+    /// Per-segment spans for path expressions (e.g. each WORD token in `Color.Red`).
+    path_segment_spans: HashMap<ExprId, Vec<TextRange>>,
+
+    /// Per-field-name spans for object literals (e.g. the `x` and `y` tokens in `Point { x: 1, y: 2 }`).
+    object_field_name_spans: HashMap<ExprId, Vec<TextRange>>,
+
+    /// Field token span for field access expressions (e.g. the `name` token in `user.name`).
+    field_access_field_span: HashMap<ExprId, TextRange>,
 }
 
 impl HirSourceMap {
@@ -296,6 +326,20 @@ impl HirSourceMap {
     }
 
     // ========================================================================
+    // Catch arm mappings
+    // ========================================================================
+
+    /// Insert catch arm spans.
+    pub fn insert_catch_arm(&mut self, id: CatchArmId, spans: CatchArmSpans) {
+        self.catch_arm_spans.insert(id, spans);
+    }
+
+    /// Get the spans for a catch arm.
+    pub fn catch_arm_spans(&self, id: CatchArmId) -> Option<CatchArmSpans> {
+        self.catch_arm_spans.get(&id).copied()
+    }
+
+    // ========================================================================
     // Type annotation mappings
     // ========================================================================
 
@@ -307,6 +351,44 @@ impl HirSourceMap {
     /// Get the span for a type annotation.
     pub fn type_span(&self, id: TypeId) -> Option<Span> {
         self.type_spans.get(&id).copied()
+    }
+
+    // ========================================================================
+    // Sub-expression span mappings
+    // ========================================================================
+
+    /// Insert per-segment spans for a path expression.
+    pub fn insert_path_segment_spans(&mut self, id: ExprId, spans: Vec<TextRange>) {
+        self.path_segment_spans.insert(id, spans);
+    }
+
+    /// Get per-segment spans for a path expression.
+    pub fn path_segment_spans(&self, id: ExprId) -> Option<&[TextRange]> {
+        self.path_segment_spans
+            .get(&id)
+            .map(std::vec::Vec::as_slice)
+    }
+
+    /// Insert per-field-name spans for an object literal.
+    pub fn insert_object_field_name_spans(&mut self, id: ExprId, spans: Vec<TextRange>) {
+        self.object_field_name_spans.insert(id, spans);
+    }
+
+    /// Get per-field-name spans for an object literal.
+    pub fn object_field_name_spans(&self, id: ExprId) -> Option<&[TextRange]> {
+        self.object_field_name_spans
+            .get(&id)
+            .map(std::vec::Vec::as_slice)
+    }
+
+    /// Insert the field token span for a field access expression.
+    pub fn insert_field_access_field_span(&mut self, id: ExprId, span: TextRange) {
+        self.field_access_field_span.insert(id, span);
+    }
+
+    /// Get the field token span for a field access expression.
+    pub fn field_access_field_span(&self, id: ExprId) -> Option<TextRange> {
+        self.field_access_field_span.get(&id).copied()
     }
 }
 
@@ -323,6 +405,9 @@ impl HirSourceMap {
 pub struct SignatureSourceMap {
     /// Span of the return type annotation
     return_type_span: Option<TextRange>,
+
+    /// Span of the throws clause type annotation
+    throws_type_span: Option<TextRange>,
 
     /// Spans of parameters (entire param including name), indexed by position
     param_spans: Vec<Option<TextRange>>,
@@ -345,6 +430,16 @@ impl SignatureSourceMap {
     /// Get the return type span.
     pub fn return_type_span(&self) -> Option<TextRange> {
         self.return_type_span
+    }
+
+    /// Set the throws clause type span.
+    pub fn set_throws_type_span(&mut self, span: TextRange) {
+        self.throws_type_span = Some(span);
+    }
+
+    /// Get the throws clause type span.
+    pub fn throws_type_span(&self) -> Option<TextRange> {
+        self.throws_type_span
     }
 
     /// Add a parameter span (entire parameter including name).

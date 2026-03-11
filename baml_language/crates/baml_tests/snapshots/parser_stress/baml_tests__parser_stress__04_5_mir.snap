@@ -1,6 +1,5 @@
 ---
-source: target/debug/build/baml_tests-d8c3d4c38f908488/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 === MIR ===
 fn ComplexType() -> map<string, map<string, map<string, int[]?>>> {
@@ -9,6 +8,7 @@ fn ComplexType() -> map<string, map<string, map<string, int[]?>>> {
     let _1: void
 
     bb0: {
+        _0 = {  };
         goto -> bb2;
     }
 
@@ -19,7 +19,6 @@ fn ComplexType() -> map<string, map<string, map<string, int[]?>>> {
     bb2: {
         return;
     }
-
 }
 
 fn DeepExpression() -> int {
@@ -75,14 +74,41 @@ fn DeepExpression() -> int {
     bb2: {
         return;
     }
+}
 
+fn Process24.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process24"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process24";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process22(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process22"
     let _4: map<string, unknown>
     let _5: "input"
@@ -104,14 +130,69 @@ fn Process22(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process66.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process66"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process66";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process30.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process30"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process30";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process54(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process54"
     let _4: map<string, unknown>
     let _5: "input"
@@ -133,14 +214,13 @@ fn Process54(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process95(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process95"
     let _4: map<string, unknown>
     let _5: "input"
@@ -162,14 +242,13 @@ fn Process95(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process60(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process60"
     let _4: map<string, unknown>
     let _5: "input"
@@ -191,14 +270,13 @@ fn Process60(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process68(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process68"
     let _4: map<string, unknown>
     let _5: "input"
@@ -220,14 +298,97 @@ fn Process68(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process58.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process58"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process58";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process36.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process36"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process36";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process53.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process53"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process53";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process14(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process14"
     let _4: map<string, unknown>
     let _5: "input"
@@ -249,14 +410,41 @@ fn Process14(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process22.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process22"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process22";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process79(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process79"
     let _4: map<string, unknown>
     let _5: "input"
@@ -278,14 +466,13 @@ fn Process79(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process84(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process84"
     let _4: map<string, unknown>
     let _5: "input"
@@ -307,14 +494,97 @@ fn Process84(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process62.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process62"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process62";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process97.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process97"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process97";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process9.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process9"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process9";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process33(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process33"
     let _4: map<string, unknown>
     let _5: "input"
@@ -336,14 +606,41 @@ fn Process33(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process33.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process33"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process33";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process12(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process12"
     let _4: map<string, unknown>
     let _5: "input"
@@ -365,14 +662,97 @@ fn Process12(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process59.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process59"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process59";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process37.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process37"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process37";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process59.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process59"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process59";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process74(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process74"
     let _4: map<string, unknown>
     let _5: "input"
@@ -394,14 +774,69 @@ fn Process74(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process45.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process45"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process45";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process13.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process13"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process13";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process99(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process99"
     let _4: map<string, unknown>
     let _5: "input"
@@ -423,14 +858,41 @@ fn Process99(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process76.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process76"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process76";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process64(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process64"
     let _4: map<string, unknown>
     let _5: "input"
@@ -452,14 +914,13 @@ fn Process64(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process52(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process52"
     let _4: map<string, unknown>
     let _5: "input"
@@ -481,14 +942,41 @@ fn Process52(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process40.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process40"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process40";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process7(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process7"
     let _4: map<string, unknown>
     let _5: "input"
@@ -510,14 +998,41 @@ fn Process7(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process32.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process32"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process32";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process80(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process80"
     let _4: map<string, unknown>
     let _5: "input"
@@ -539,14 +1054,69 @@ fn Process80(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process88.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process88"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process88";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process31.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process31"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process31";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process58(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process58"
     let _4: map<string, unknown>
     let _5: "input"
@@ -568,14 +1138,41 @@ fn Process58(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process42.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process42"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process42";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process97(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process97"
     let _4: map<string, unknown>
     let _5: "input"
@@ -597,14 +1194,13 @@ fn Process97(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process36(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process36"
     let _4: map<string, unknown>
     let _5: "input"
@@ -626,14 +1222,153 @@ fn Process36(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process63.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process63"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process63";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process51.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process51"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process51";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process54.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process54"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process54";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process47.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process47"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process47";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process26.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process26"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process26";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process63(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process63"
     let _4: map<string, unknown>
     let _5: "input"
@@ -655,14 +1390,41 @@ fn Process63(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process37.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process37"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process37";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process19(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process19"
     let _4: map<string, unknown>
     let _5: "input"
@@ -684,14 +1446,209 @@ fn Process19(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process95.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process95"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process95";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process33.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process33"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process33";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process56.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process56"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process56";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process80.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process80"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process80";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process13.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process13"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process13";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process94.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process94"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process94";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process60.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process60"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process60";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process83(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process83"
     let _4: map<string, unknown>
     let _5: "input"
@@ -713,14 +1670,41 @@ fn Process83(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process36.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process36"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process36";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process18(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process18"
     let _4: map<string, unknown>
     let _5: "input"
@@ -742,14 +1726,41 @@ fn Process18(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process56.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process56"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process56";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process26(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process26"
     let _4: map<string, unknown>
     let _5: "input"
@@ -771,14 +1782,13 @@ fn Process26(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process43(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process43"
     let _4: map<string, unknown>
     let _5: "input"
@@ -800,14 +1810,41 @@ fn Process43(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process41.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process41"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process41";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process46(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process46"
     let _4: map<string, unknown>
     let _5: "input"
@@ -829,14 +1866,41 @@ fn Process46(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process91.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process91"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process91";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process62(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process62"
     let _4: map<string, unknown>
     let _5: "input"
@@ -858,14 +1922,13 @@ fn Process62(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process87(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process87"
     let _4: map<string, unknown>
     let _5: "input"
@@ -887,14 +1950,13 @@ fn Process87(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process44(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process44"
     let _4: map<string, unknown>
     let _5: "input"
@@ -916,14 +1978,13 @@ fn Process44(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process47(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process47"
     let _4: map<string, unknown>
     let _5: "input"
@@ -945,14 +2006,13 @@ fn Process47(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process35(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process35"
     let _4: map<string, unknown>
     let _5: "input"
@@ -974,14 +2034,13 @@ fn Process35(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process38(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process38"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1003,14 +2062,69 @@ fn Process38(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process29.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process29"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process29";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process25.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process25"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process25";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process41(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process41"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1032,14 +2146,69 @@ fn Process41(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process98.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process98"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process98";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process18.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process18"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process18";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process28(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process28"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1061,14 +2230,13 @@ fn Process28(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process65(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process65"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1090,14 +2258,97 @@ fn Process65(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process17.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process17"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process17";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process5.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process5"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process5";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process95.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process95"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process95";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process6(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process6"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1119,14 +2370,13 @@ fn Process6(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process32(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process32"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1148,14 +2398,41 @@ fn Process32(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process52.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process52"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process52";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process92(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process92"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1177,14 +2454,41 @@ fn Process92(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process90.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process90"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process90";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process55(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process55"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1206,14 +2510,13 @@ fn Process55(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process66(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process66"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1235,14 +2538,209 @@ fn Process66(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process97.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process97"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process97";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process27.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process27"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process27";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process93.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process93"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process93";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process8.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process8"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process8";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process16.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process16"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process16";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process86.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process86"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process86";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process85.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process85"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process85";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process56(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process56"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1264,14 +2762,69 @@ fn Process56(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process67.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process67"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process67";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process11.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process11"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process11";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process67(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process67"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1293,14 +2846,321 @@ fn Process67(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process76.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process76"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process76";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process78.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process78"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process78";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process12.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process12"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process12";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process79.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process79"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process79";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process57.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process57"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process57";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process12.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process12"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process12";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process75.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process75"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process75";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process77.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process77"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process77";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process93.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process93"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process93";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process64.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process64"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process64";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process48.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process48"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process48";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process3(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process3"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1322,14 +3182,41 @@ fn Process3(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process43.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process43"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process43";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process75(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process75"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1351,14 +3238,13 @@ fn Process75(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process48(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process48"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1380,14 +3266,13 @@ fn Process48(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process49(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process49"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1409,14 +3294,181 @@ fn Process49(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process96.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process96"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process96";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process41.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process41"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process41";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process20.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process20"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process20";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process50.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process50"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process50";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process44.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process44"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process44";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process60.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process60"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process60";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process61(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process61"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1438,14 +3490,13 @@ fn Process61(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process96(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process96"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1467,14 +3518,69 @@ fn Process96(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process15.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process15"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process15";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process82.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process82"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process82";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process34(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process34"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1496,14 +3602,69 @@ fn Process34(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process96.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process96"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process96";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process49.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process49"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process49";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process59(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process59"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1525,14 +3686,41 @@ fn Process59(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process54.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process54"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process54";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process89(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process89"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1554,14 +3742,13 @@ fn Process89(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process45(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process45"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1583,14 +3770,69 @@ fn Process45(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process1.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process1"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process1";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process25.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process25"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process25";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process86(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process86"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1612,14 +3854,349 @@ fn Process86(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process19.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process19"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process19";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process38.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process38"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process38";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process23.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process23"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process23";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process65.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process65"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process65";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process23.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process23"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process23";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process72.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process72"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process72";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process35.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process35"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process35";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process100.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process100"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process100";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process46.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process46"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process46";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process4.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process4"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process4";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process86.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process86"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process86";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process73.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process73"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process73";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process16(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process16"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1641,14 +4218,41 @@ fn Process16(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process65.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process65"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process65";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process39(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process39"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1670,14 +4274,69 @@ fn Process39(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process78.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process78"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process78";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process68.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process68"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process68";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process82(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process82"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1699,14 +4358,41 @@ fn Process82(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process35.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process35"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process35";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process2(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process2"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1728,14 +4414,13 @@ fn Process2(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process27(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process27"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1757,14 +4442,97 @@ fn Process27(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process11.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process11"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process11";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process100.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process100"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process100";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process61.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process61"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process61";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process53(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process53"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1786,14 +4554,41 @@ fn Process53(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process62.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process62"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process62";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process23(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process23"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1815,14 +4610,125 @@ fn Process23(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process16.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process16"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process16";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process21.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process21"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process21";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process74.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process74"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process74";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process55.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process55"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process55";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process9(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process9"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1844,14 +4750,349 @@ fn Process9(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process61.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process61"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process61";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process84.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process84"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process84";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process89.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process89"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process89";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process52.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process52"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process52";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process74.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process74"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process74";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process30.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process30"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process30";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process32.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process32"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process32";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process48.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process48"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process48";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process28.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process28"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process28";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process19.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process19"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process19";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process31.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process31"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process31";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process89.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process89"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process89";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process72(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process72"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1873,14 +5114,41 @@ fn Process72(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process38.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process38"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process38";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process77(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process77"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1902,14 +5170,13 @@ fn Process77(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process40(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process40"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1931,14 +5198,13 @@ fn Process40(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process30(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process30"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1960,14 +5226,69 @@ fn Process30(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process20.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process20"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process20";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process26.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process26"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process26";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process8(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process8"
     let _4: map<string, unknown>
     let _5: "input"
@@ -1989,14 +5310,97 @@ fn Process8(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process83.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process83"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process83";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process63.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process63"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process63";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process39.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process39"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process39";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process11(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process11"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2018,14 +5422,69 @@ fn Process11(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process28.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process28"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process28";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process24.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process24"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process24";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process37(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process37"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2047,14 +5506,13 @@ fn Process37(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process4(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process4"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2076,14 +5534,13 @@ fn Process4(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process91(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process91"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2105,14 +5562,41 @@ fn Process91(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process46.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process46"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process46";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process31(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process31"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2134,14 +5618,181 @@ fn Process31(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process70.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process70"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process70";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process3.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process3"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process3";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process29.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process29"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process29";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process9.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process9"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process9";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process84.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process84"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process84";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process43.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process43"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process43";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process50(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process50"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2163,14 +5814,13 @@ fn Process50(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process20(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process20"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2192,14 +5842,13 @@ fn Process20(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process98(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process98"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2221,14 +5870,125 @@ fn Process98(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process88.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process88"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process88";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process87.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process87"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process87";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process91.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process91"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process91";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process71.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process71"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process71";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process85(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process85"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2250,14 +6010,237 @@ fn Process85(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process6.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process6"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process6";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process71.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process71"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process71";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process47.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process47"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process47";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process67.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process67"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process67";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process72.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process72"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process72";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process69.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process69"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process69";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process17.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process17"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process17";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process79.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process79"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process79";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process78(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process78"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2279,14 +6262,41 @@ fn Process78(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process2.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process2"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process2";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process1(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process1"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2308,14 +6318,181 @@ fn Process1(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process94.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process94"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process94";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process5.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process5"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process5";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process98.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process98"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process98";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process81.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process81"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process81";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process81.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process81"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process81";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process2.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process2"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process2";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process90(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process90"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2337,14 +6514,13 @@ fn Process90(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process17(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process17"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2366,14 +6542,153 @@ fn Process17(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process50.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process50"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process50";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process49.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process49"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process49";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process27.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process27"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process27";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process22.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process22"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process22";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process64.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process64"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process64";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process81(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process81"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2395,14 +6710,69 @@ fn Process81(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process58.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process58"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process58";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process83.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process83"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process83";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process71(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process71"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2424,14 +6794,13 @@ fn Process71(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process15(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process15"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2453,14 +6822,41 @@ fn Process15(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process8.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process8"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process8";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process42(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process42"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2482,14 +6878,69 @@ fn Process42(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process92.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process92"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process92";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process6.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process6"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process6";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process51(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process51"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2511,14 +6962,41 @@ fn Process51(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process7.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process7"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process7";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process5(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process5"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2540,14 +7018,41 @@ fn Process5(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process21.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process21"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process21";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process13(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process13"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2569,14 +7074,293 @@ fn Process13(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process10.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process10"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process10";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process14.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process14"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process14";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process92.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process92"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process92";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process7.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process7"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process7";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process85.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process85"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process85";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process73.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process73"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process73";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process55.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process55"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process55";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process82.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process82"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process82";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process44.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process44"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process44";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process99.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process99"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process99";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process29(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process29"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2598,14 +7382,13 @@ fn Process29(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process93(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process93"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2627,14 +7410,209 @@ fn Process93(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process51.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process51"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process51";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process90.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process90"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process90";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process34.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process34"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process34";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process87.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process87"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process87";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process1.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process1"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process1";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process53.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process53"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process53";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process39.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process39"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process39";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process70(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process70"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2656,14 +7634,41 @@ fn Process70(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process75.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process75"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process75";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process76(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process76"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2685,14 +7690,13 @@ fn Process76(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process10(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process10"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2714,14 +7718,41 @@ fn Process10(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process68.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process68"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process68";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process21(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process21"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2743,14 +7774,209 @@ fn Process21(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process15.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process15"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process15";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process14.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process14"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process14";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process57.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process57"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process57";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process66.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process66"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process66";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process40.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process40"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process40";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process77.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process77"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process77";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process99.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process99"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process99";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process100(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process100"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2772,14 +7998,97 @@ fn Process100(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process80.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process80"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process80";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process18.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process18"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process18";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process70.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process70"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process70";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process94(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process94"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2801,14 +8110,13 @@ fn Process94(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process25(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process25"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2830,14 +8138,13 @@ fn Process25(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process69(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process69"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2859,14 +8166,13 @@ fn Process69(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process24(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process24"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2888,14 +8194,13 @@ fn Process24(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn Process88(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process88"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2917,14 +8222,41 @@ fn Process88(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process69.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process69"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process69";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process73(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process73"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2946,14 +8278,181 @@ fn Process73(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
+}
 
+fn Process45.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process45"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process45";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process4.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process4"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process4";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process10.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process10"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process10";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process42.render_prompt(input: string) -> baml.llm.PromptAst {
+    // Locals:
+    let _0: baml.llm.PromptAst // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.llm.PromptAst
+    let _3: "Process42"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.render_prompt;
+        _3 = const "Process42";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process34.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process34"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process34";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
+}
+
+fn Process3.build_request(input: string) -> baml.http.Request {
+    // Locals:
+    let _0: baml.http.Request // return
+    let _1: string // input // param
+    let _2: (string, map<string, unknown>) -> baml.http.Request
+    let _3: "Process3"
+    let _4: map<string, unknown>
+    let _5: "input"
+    let _6: string
+
+    bb0: {
+        _2 = const fn baml.llm.build_request;
+        _3 = const "Process3";
+        _5 = const "input";
+        _6 = copy _1;
+        _4 = { copy _5: copy _6 };
+        _0 = call copy _2(copy _3, copy _4) -> [bb2];
+    }
+
+    bb1: {
+        return;
+    }
+
+    bb2: {
+        goto -> bb1;
+    }
 }
 
 fn Process57(input: string) -> string {
     // Locals:
     let _0: string // return
     let _1: string // input // param
-    let _2: null
+    let _2: (string, map<string, unknown>) -> unknown
     let _3: "Process57"
     let _4: map<string, unknown>
     let _5: "input"
@@ -2975,7 +8474,6 @@ fn Process57(input: string) -> string {
     bb2: {
         goto -> bb1;
     }
-
 }
 
 fn BodyTorture() -> int {
@@ -3028,5 +8526,4 @@ fn BodyTorture() -> int {
         _0 = const null;
         goto -> bb1;
     }
-
 }

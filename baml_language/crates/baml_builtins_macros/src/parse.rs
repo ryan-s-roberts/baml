@@ -39,8 +39,17 @@ pub(crate) struct ModuleItem {
 /// Content inside a module.
 pub(crate) enum ModuleContent {
     Struct(StructItem),
+    Enum(EnumItem),
     Function(Box<FunctionItem>),
     Module(ModuleItem),
+}
+
+/// An enum with variants (e.g., `#[builtin] enum ClientType { Primitive, Fallback, RoundRobin }`).
+pub(crate) struct EnumItem {
+    pub(crate) name: Ident,
+    pub(crate) variants: Vec<Ident>,
+    /// Whether this enum is marked with #[builtin].
+    pub(crate) is_builtin: bool,
 }
 
 /// Content inside a struct.
@@ -84,6 +93,10 @@ pub(crate) struct FunctionItem {
     pub(crate) is_sys_op: bool,
     /// Whether this `sys_op` needs engine context (marked with #[`uses(engine_ctx)`]).
     pub(crate) uses_engine_ctx: bool,
+    /// Contract error categories from `#[throws(Io, Timeout)]`.
+    pub(crate) throws: Vec<Ident>,
+    /// Contract panic categories from `#[panics(HostPanic)]`.
+    pub(crate) panics: Vec<Ident>,
 }
 
 impl ModuleItem {
@@ -105,11 +118,20 @@ impl ModuleItem {
                 )?));
             } else if lookahead.peek(Token![struct]) {
                 items.push(ModuleContent::Struct(content.parse()?));
+            } else if lookahead.peek(Token![enum]) {
+                items.push(ModuleContent::Enum(EnumItem::parse_with_attrs(
+                    &content,
+                    &[],
+                )?));
             } else if lookahead.peek(Token![#]) {
                 let attrs = content.call(Attribute::parse_outer)?;
                 let lookahead2 = content.lookahead1();
                 if lookahead2.peek(Token![struct]) {
                     items.push(ModuleContent::Struct(StructItem::parse_with_attrs(
+                        &content, &attrs,
+                    )?));
+                } else if lookahead2.peek(Token![enum]) {
+                    items.push(ModuleContent::Enum(EnumItem::parse_with_attrs(
                         &content, &attrs,
                     )?));
                 } else if lookahead2.peek(Token![fn]) {
@@ -227,6 +249,30 @@ impl FunctionItem {
         }
         let is_sys_op = attrs.iter().any(|attr| attr.path().is_ident("sys_op"));
 
+        let mut throws = Vec::new();
+        for attr in attrs.iter().filter(|a| a.path().is_ident("throws")) {
+            attr.parse_nested_meta(|meta| {
+                throws.push(
+                    meta.path.get_ident().cloned().ok_or_else(|| {
+                        syn::Error::new_spanned(&meta.path, "expected identifier")
+                    })?,
+                );
+                Ok(())
+            })?;
+        }
+
+        let mut panics = Vec::new();
+        for attr in attrs.iter().filter(|a| a.path().is_ident("panics")) {
+            attr.parse_nested_meta(|meta| {
+                panics.push(
+                    meta.path.get_ident().cloned().ok_or_else(|| {
+                        syn::Error::new_spanned(&meta.path, "expected identifier")
+                    })?,
+                );
+                Ok(())
+            })?;
+        }
+
         input.parse::<Token![fn]>()?;
         let name: Ident = input.parse()?;
         let generics: Generics = input.parse()?;
@@ -283,6 +329,8 @@ impl FunctionItem {
             uses_vm,
             is_sys_op,
             uses_engine_ctx,
+            throws,
+            panics,
         })
     }
 }
@@ -291,5 +339,33 @@ impl Parse for FunctionItem {
     fn parse(input: ParseStream) -> Result<Self> {
         let attrs = input.call(Attribute::parse_outer)?;
         Self::parse_with_attrs(input, &attrs)
+    }
+}
+
+impl EnumItem {
+    pub(crate) fn parse_with_attrs(input: ParseStream, attrs: &[Attribute]) -> Result<Self> {
+        let is_builtin = attrs.iter().any(|attr| attr.path().is_ident("builtin"));
+
+        input.parse::<Token![enum]>()?;
+        let name: Ident = input.parse()?;
+
+        let content;
+        braced!(content in input);
+
+        let mut variants = Vec::new();
+        while !content.is_empty() {
+            let variant_name: Ident = content.parse()?;
+            variants.push(variant_name);
+            // Optional trailing comma
+            if content.peek(Token![,]) {
+                content.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(EnumItem {
+            name,
+            variants,
+            is_builtin,
+        })
     }
 }

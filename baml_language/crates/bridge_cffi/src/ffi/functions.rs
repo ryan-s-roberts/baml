@@ -2,15 +2,13 @@
 
 use std::{ffi::CStr, panic::AssertUnwindSafe};
 
-use bridge_ctypes::{DecodeFromBuffer, kwargs_to_bex_values};
+use bridge_ctypes::{DecodeFromBuffer, HANDLE_TABLE, kwargs_to_bex_values};
 use futures::future::FutureExt;
 use prost::Message;
 
 use crate::{
     Buffer,
-    baml::cffi::{
-        HostFunctionArguments, InvocationResponse, invocation_response::Response as CResponse,
-    },
+    baml::cffi::{CallAck, CallFunctionArgs, call_ack::Response as CResponse},
     engine::{get_runtime, get_tokio_runtime},
     error::BridgeError,
     ffi::callbacks::{send_error_to_callback, send_result_to_callback},
@@ -18,13 +16,13 @@ use crate::{
 
 /// Encode a success response (task spawned successfully).
 fn encode_success_response() -> Buffer {
-    let msg = InvocationResponse { response: None };
+    let msg = CallAck { response: None };
     Buffer::from(msg.encode_to_vec())
 }
 
 /// Encode an error response (failed to spawn task).
 fn encode_error_response(error: &BridgeError) -> Buffer {
-    let msg = InvocationResponse {
+    let msg = CallAck {
         response: Some(CResponse::Error(error.to_string())),
     };
     Buffer::from(msg.encode_to_vec())
@@ -74,22 +72,24 @@ fn call_function_inner(
     };
 
     // Decode protobuf arguments
-    let args = unsafe { HostFunctionArguments::from_c_buffer(encoded_args as *const u8, length) }?;
+    let args = unsafe { CallFunctionArgs::from_c_buffer(encoded_args as *const u8, length) }?;
 
     // Convert kwargs to BexValue
-    let kwargs = kwargs_to_bex_values(args.kwargs)?;
+    let kwargs = kwargs_to_bex_values(args.kwargs, &HANDLE_TABLE)?;
 
     // Silently ignore collectors and type_builder (not supported)
-    // TODO: Support collectors when bex_engine adds support
-    // TODO: Support type_builder when bex_engine adds support
+    let call_ctx = bex_project::FunctionCallContextBuilder::new(sys_types::CallId(id.into()));
 
     // Spawn async task with panic catching
-    get_tokio_runtime().spawn(async move {
+    get_tokio_runtime()?.spawn(async move {
         // Wrap the async block with catch_unwind to handle panics
-        let result =
-            AssertUnwindSafe(async { runtime.call_function(&func_name, kwargs.into()).await })
-                .catch_unwind()
-                .await;
+        let result = AssertUnwindSafe(async {
+            runtime
+                .call_function(&func_name, kwargs.into(), call_ctx.build())
+                .await
+        })
+        .catch_unwind()
+        .await;
 
         match result {
             Ok(Ok(value)) => {
@@ -143,9 +143,20 @@ pub extern "C" fn call_function_stream_from_c(
     encode_success_response()
 }
 
-/// Cancel a function call (placeholder).
+/// Cancel an in-flight function call.
+///
+/// Fires the `CancellationToken` for the given call ID, which causes:
+/// 1. The engine's Await handler to exit immediately with `EngineError::Cancelled`
+/// 2. All in-flight async tasks (HTTP requests, sleeps) to be aborted
+///
+/// If the call has already completed or the ID is unknown, this returns an error.
 #[unsafe(no_mangle)]
-pub extern "C" fn cancel_function_call(_id: u32) -> Buffer {
-    // TODO: Implement cancellation
-    encode_success_response()
+pub extern "C" fn cancel_function_call(id: u32) -> Buffer {
+    match get_runtime() {
+        Ok(runtime) => match runtime.cancel_function_call(sys_types::CallId(id.into())) {
+            Ok(()) => encode_success_response(),
+            Err(e) => encode_error_response(&BridgeError::Runtime(e)),
+        },
+        Err(e) => encode_error_response(&e),
+    }
 }

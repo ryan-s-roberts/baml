@@ -23,7 +23,7 @@
 //! ```
 
 // Re-export Ty and TypeName from baml_type for convenience
-pub use baml_type::{Ty, TypeName};
+pub use baml_type::{Ty, TyAttr, TypeName};
 use bex_resource_types::ResourceHandle;
 use indexmap::IndexMap;
 
@@ -55,12 +55,15 @@ impl UnionMetadata {
     /// Create metadata for a union type.
     pub fn new(union_type: Ty, selected_option: Ty) -> Self {
         let (is_optional, is_single_pattern) = match &union_type {
-            Ty::Union(members) => {
-                let has_null = members.iter().any(|m| matches!(m, Ty::Null));
-                let non_null_count = members.iter().filter(|m| !matches!(m, Ty::Null)).count();
+            Ty::Union(members, _) => {
+                let has_null = members.iter().any(|m| matches!(m, Ty::Null { .. }));
+                let non_null_count = members
+                    .iter()
+                    .filter(|m| !matches!(m, Ty::Null { .. }))
+                    .count();
                 (has_null, non_null_count == 1)
             }
-            Ty::Optional(_) => (true, true),
+            Ty::Optional(..) => (true, true),
             _ => (false, false),
         };
 
@@ -84,6 +87,8 @@ impl UnionMetadata {
 pub enum BexExternalAdt {
     Media(bex_vm_types::MediaValue),
     PromptAst(bex_vm_types::PromptAst),
+    Collector(bex_vm_types::CollectorRef),
+    Type(baml_type::Ty),
 }
 
 /// A deep-copied value tree with no heap references.
@@ -190,11 +195,68 @@ impl BexExternalAdt {
                 baml_type::MediaKind::Generic => "media",
             },
             BexExternalAdt::PromptAst(_) => "prompt_ast",
+            BexExternalAdt::Collector(_) => "collector",
+            BexExternalAdt::Type(_) => "type",
         }
     }
 }
 
 impl BexExternalValue {
+    /// Construct a union value (`A | B | ...`) with metadata.
+    ///
+    /// ```ignore
+    /// BexExternalValue::union(BexExternalValue::Int(42), [Ty::int(), Ty::string()], Ty::int())
+    /// ```
+    pub fn union(
+        value: BexExternalValue,
+        members: impl IntoIterator<Item = Ty>,
+        selected: Ty,
+    ) -> Self {
+        let union_type = Ty::Union(members.into_iter().collect(), TyAttr::default());
+        BexExternalValue::Union {
+            value: Box::new(value),
+            metadata: UnionMetadata::new(union_type, selected),
+        }
+    }
+
+    /// Construct an optional value (`T?`) with metadata.
+    ///
+    /// Selected type is auto-detected: `inner` when non-null, `Ty::null()` when null.
+    pub fn optional(value: BexExternalValue, inner: Ty) -> Self {
+        let selected = if matches!(value, BexExternalValue::Null) {
+            Ty::null()
+        } else {
+            inner.clone()
+        };
+        let optional_type = Ty::Optional(Box::new(inner), TyAttr::default());
+        BexExternalValue::Union {
+            value: Box::new(value),
+            metadata: UnionMetadata::new(optional_type, selected),
+        }
+    }
+
+    /// Construct an enum variant value.
+    pub fn variant(enum_name: impl Into<String>, variant_name: impl Into<String>) -> Self {
+        BexExternalValue::Variant {
+            enum_name: enum_name.into(),
+            variant_name: variant_name.into(),
+        }
+    }
+
+    /// Construct a class instance value.
+    pub fn instance(
+        class_name: impl Into<String>,
+        fields: IndexMap<&str, BexExternalValue>,
+    ) -> Self {
+        BexExternalValue::Instance {
+            class_name: class_name.into(),
+            fields: fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+        }
+    }
+
     /// Get the type name for error messages.
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -279,6 +341,18 @@ impl AsBexExternalValue for () {
     }
 }
 
+impl AsBexExternalValue for i64 {
+    fn into_bex_external_value(self) -> BexExternalValue {
+        BexExternalValue::Int(self)
+    }
+}
+
+impl AsBexExternalValue for f64 {
+    fn into_bex_external_value(self) -> BexExternalValue {
+        BexExternalValue::Float(self)
+    }
+}
+
 impl AsBexExternalValue for String {
     fn into_bex_external_value(self) -> BexExternalValue {
         BexExternalValue::String(self)
@@ -294,6 +368,12 @@ impl AsBexExternalValue for bool {
 impl AsBexExternalValue for bex_vm_types::PromptAst {
     fn into_bex_external_value(self) -> BexExternalValue {
         BexExternalValue::Adt(BexExternalAdt::PromptAst(self))
+    }
+}
+
+impl AsBexExternalValue for baml_type::Ty {
+    fn into_bex_external_value(self) -> BexExternalValue {
+        BexExternalValue::Adt(BexExternalAdt::Type(self))
     }
 }
 

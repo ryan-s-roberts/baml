@@ -1,6 +1,5 @@
 ---
-source: target/debug/build/baml_tests-cb4594c533e23a52/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 Slash "/"
 Slash "/"
@@ -223,6 +222,7 @@ Error "本"
 LParen "("
 Error "输"
 Error "入"
+Colon ":"
 Word "string"
 RParen ")"
 Arrow "->"

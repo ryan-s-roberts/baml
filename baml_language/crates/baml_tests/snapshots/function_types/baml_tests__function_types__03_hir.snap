@@ -1,10 +1,9 @@
 ---
-source: target/debug/build/baml_tests-3c66388e75d3efcb/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
 === HIR ITEMS ===
 function GetTransform() -> (x: int) -> int {
-      1
+    1
 }
 
 type Complex = (items: int[], lookup: map<string, int>) -> string?
@@ -24,3 +23,21 @@ type BinaryOp = (a: int, b: int) -> int
 type UnnamedParams = (int, int) -> int
 
 type FunctionFactory = (config: string) -> (int) -> int
+
+type stream_FunctionFactory = unknown
+
+type stream_UnionParam = unknown
+
+type stream_MixedParams = unknown
+
+type stream_BinaryOp = unknown
+
+type stream_Complex = unknown
+
+type stream_UnnamedParams = unknown
+
+type stream_Producer = unknown
+
+type stream_Curried = unknown
+
+type stream_IntToInt = unknown

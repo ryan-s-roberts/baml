@@ -2,12 +2,12 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useUser } from "@/components/providers/user-provider";
 import { BepList } from "@/components/bep/bep-list";
+import { BepCreateModal } from "@/components/bep/bep-create-modal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 
 export default function Home() {
   const { user, userId, isLoading, logout } = useUser();
@@ -47,7 +47,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-[1600px] mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold">BAML Enhancement Proposals</h1>
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">
@@ -59,15 +59,10 @@ export default function Home() {
           </div>
         </div>
       </header>
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-[1600px] mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">All Proposals</h2>
-          <Link href="/beps/new">
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New BEP
-            </Button>
-          </Link>
+          <BepCreateModal userId={userId} />
         </div>
         <BepList />
       </main>

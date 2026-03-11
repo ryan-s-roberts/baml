@@ -75,10 +75,18 @@ pub enum TokenKind {
     Continue,
     #[token("return")]
     Return,
+    #[token("throw")]
+    Throw,
     #[token("match")]
     Match,
+    #[token("catch")]
+    Catch,
+    #[token("catch_all")]
+    CatchAll,
     #[token("assert")]
     Assert,
+    #[token("throws")]
+    Throws,
 
     // Other keywords
     #[token("watch")]
@@ -237,6 +245,10 @@ pub enum TokenKind {
     #[token("%")]
     Percent,
 
+    // Backslash is used for escaping quotes in strings
+    #[token("\\")]
+    Backslash,
+
     // ============ Whitespace (preserved for losslessness) ============
     #[regex(r"[ \t]+")]
     Whitespace,
@@ -270,8 +282,12 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Break => "break",
             TokenKind::Continue => "continue",
             TokenKind::Return => "return",
+            TokenKind::Throw => "throw",
             TokenKind::Match => "match",
+            TokenKind::Catch => "catch",
+            TokenKind::CatchAll => "catch_all",
             TokenKind::Assert => "assert",
+            TokenKind::Throws => "throws",
             TokenKind::Watch => "watch",
             TokenKind::Instanceof => "instanceof",
             TokenKind::Env => "env",
@@ -349,6 +365,9 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Star => "'*'",
             TokenKind::Slash => "'/'",
             TokenKind::Percent => "'%'",
+
+            // Backslash
+            TokenKind::Backslash => "'\\'",
 
             // Whitespace
             TokenKind::Whitespace => "whitespace",
@@ -756,6 +775,34 @@ mod tests {
     }
 
     #[test]
+    fn test_escaped_quote_in_string() {
+        // Test that backslashes in strings are not treated as quotes
+        let source = r#""This is a \" string""#;
+        let tokens = lex_token_kinds(source);
+
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Quote,
+                TokenKind::Word, // This
+                TokenKind::Whitespace,
+                TokenKind::Word, // is
+                TokenKind::Whitespace,
+                TokenKind::Word, // a
+                TokenKind::Whitespace,
+                TokenKind::Backslash,
+                TokenKind::Quote,
+                TokenKind::Whitespace,
+                TokenKind::Word, // string
+                TokenKind::Quote,
+            ]
+        );
+
+        // Verify lossless
+        assert_eq!(reconstruct_source(&lex(source)), source);
+    }
+
+    #[test]
     fn test_line_comment() {
         // Test that actual line comments (outside strings) are lexed as individual tokens
         let source = "// This is a comment\ncode";
@@ -783,6 +830,42 @@ mod tests {
 
         // Verify lossless
         assert_eq!(reconstruct_source(&lex(source)), source);
+    }
+
+    #[test]
+    fn test_keyword_in_identifier() {
+        // `get_client` should be a single WORD, not `get_` + keyword `client`
+        let tokens = lex_no_whitespace("get_client");
+        assert_eq!(tokens, vec![TokenKind::Word]);
+
+        let all = lex("get_client");
+        assert_eq!(all[0].text, "get_client");
+    }
+
+    #[test]
+    fn test_exception_keywords() {
+        let tokens = lex_no_whitespace("throw catch");
+        assert_eq!(tokens, vec![TokenKind::Throw, TokenKind::Catch,]);
+
+        // catch_all is a keyword; catch_all_panics lexes as a plain identifier
+        let tokens2 = lex_no_whitespace("catch_all catch_all_panics");
+        assert_eq!(tokens2, vec![TokenKind::CatchAll, TokenKind::Word,]);
+    }
+
+    #[test]
+    fn test_path_with_keyword_segment() {
+        // `baml.llm.get_client` should be 5 tokens: WORD DOT WORD DOT WORD
+        let tokens = lex_no_whitespace("baml.llm.get_client");
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Word, // baml
+                TokenKind::Dot,
+                TokenKind::Word, // llm
+                TokenKind::Dot,
+                TokenKind::Word, // get_client
+            ]
+        );
     }
 
     #[test]

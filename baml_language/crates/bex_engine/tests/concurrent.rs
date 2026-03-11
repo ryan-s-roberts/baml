@@ -11,7 +11,8 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use bex_engine::{BexEngine, BexExternalValue, Ty};
+use baml_type::TyAttr;
+use bex_engine::{BexEngine, BexExternalValue, FunctionCallContextBuilder, Ty};
 use common::compile_for_engine;
 use sys_native::SysOpsExt;
 
@@ -31,7 +32,12 @@ async fn test_concurrent_calls_no_race() {
 
     let snapshot = compile_for_engine(source);
     let engine = Arc::new(
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine"),
+        BexEngine::new(
+            snapshot,
+            std::sync::Arc::new(sys_types::SysOps::native()),
+            None,
+        )
+        .expect("Failed to create engine"),
     );
 
     // Spawn 10 concurrent calls
@@ -39,7 +45,13 @@ async fn test_concurrent_calls_no_race() {
     for _ in 0..10 {
         let engine = Arc::clone(&engine);
         handles.push(tokio::spawn(async move {
-            engine.call_function("test_function", vec![]).await
+            engine
+                .call_function(
+                    "test_function",
+                    vec![],
+                    FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+                )
+                .await
         }));
     }
 
@@ -67,7 +79,12 @@ async fn test_concurrent_allocations_no_overlap() {
 
     let snapshot = compile_for_engine(source);
     let engine = Arc::new(
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine"),
+        BexEngine::new(
+            snapshot,
+            std::sync::Arc::new(sys_types::SysOps::native()),
+            None,
+        )
+        .expect("Failed to create engine"),
     );
 
     // Track allocations from each concurrent call
@@ -79,7 +96,13 @@ async fn test_concurrent_allocations_no_overlap() {
         let count = Arc::clone(&allocation_count);
         handles.push(tokio::spawn(async move {
             // Function that allocates many objects
-            let result = engine.call_function("allocate_many", vec![]).await?;
+            let result = engine
+                .call_function(
+                    "allocate_many",
+                    vec![],
+                    FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+                )
+                .await?;
             count.fetch_add(1, Ordering::SeqCst);
             Ok::<_, bex_engine::EngineError>(result)
         }));
@@ -92,7 +115,9 @@ async fn test_concurrent_allocations_no_overlap() {
         // Verify the result is correct
         let value = result.unwrap();
         let expected = BexExternalValue::Array {
-            element_type: Ty::String,
+            element_type: Ty::String {
+                attr: TyAttr::default(),
+            },
             items: vec![
                 BexExternalValue::String("a".to_string()),
                 BexExternalValue::String("b".to_string()),
@@ -118,7 +143,12 @@ async fn test_heap_stats_during_concurrent_execution() {
 
     let snapshot = compile_for_engine(source);
     let engine = Arc::new(
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine"),
+        BexEngine::new(
+            snapshot,
+            std::sync::Arc::new(sys_types::SysOps::native()),
+            None,
+        )
+        .expect("Failed to create engine"),
     );
 
     let initial_stats = engine.heap_stats();
@@ -128,7 +158,13 @@ async fn test_heap_stats_during_concurrent_execution() {
     for _ in 0..3 {
         let engine = Arc::clone(&engine);
         handles.push(tokio::spawn(async move {
-            engine.call_function("test_function", vec![]).await
+            engine
+                .call_function(
+                    "test_function",
+                    vec![],
+                    FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+                )
+                .await
         }));
     }
 
@@ -168,7 +204,12 @@ async fn test_concurrent_string_allocations() {
 
     let snapshot = compile_for_engine(source);
     let engine = Arc::new(
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine"),
+        BexEngine::new(
+            snapshot,
+            std::sync::Arc::new(sys_types::SysOps::native()),
+            None,
+        )
+        .expect("Failed to create engine"),
     );
 
     // Spawn many concurrent calls that allocate different strings
@@ -181,7 +222,14 @@ async fn test_concurrent_string_allocations() {
         let engine = Arc::clone(&engine);
         let func = (*func_name).to_string();
         handles.push(tokio::spawn(async move {
-            let result = engine.call_function(&func, vec![]).await?;
+            let result = engine
+                .call_function(
+                    &func,
+                    vec![],
+                    FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+                )
+                .await?;
+
             Ok::<_, bex_engine::EngineError>((func, result))
         }));
     }
@@ -217,7 +265,12 @@ async fn test_concurrent_array_allocations() {
 
     let snapshot = compile_for_engine(source);
     let engine = Arc::new(
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine"),
+        BexEngine::new(
+            snapshot,
+            std::sync::Arc::new(sys_types::SysOps::native()),
+            None,
+        )
+        .expect("Failed to create engine"),
     );
 
     // Spawn concurrent calls with different array sizes
@@ -229,7 +282,14 @@ async fn test_concurrent_array_allocations() {
     ] {
         let engine = Arc::clone(&engine);
         handles.push(tokio::spawn(async move {
-            let result = engine.call_function(func_name, vec![]).await?;
+            let result = engine
+                .call_function(
+                    func_name,
+                    vec![],
+                    FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+                )
+                .await?;
+
             Ok::<_, bex_engine::EngineError>((size, result))
         }));
     }
@@ -241,7 +301,9 @@ async fn test_concurrent_array_allocations() {
 
         // Build expected array [0, 1, 2, ..., size-1]
         let expected = BexExternalValue::Array {
-            element_type: Ty::Int,
+            element_type: Ty::Int {
+                attr: TyAttr::default(),
+            },
             items: (0..size).map(BexExternalValue::Int).collect(),
         };
         assert_eq!(value, expected, "Array mismatch for size {size}");
@@ -271,12 +333,20 @@ async fn test_call_function_with_external_args() {
     "#;
 
     let snapshot = compile_for_engine(source);
-    let engine =
-        BexEngine::new(snapshot, sys_types::SysOps::native()).expect("Failed to create engine");
+    let engine = BexEngine::new(
+        snapshot,
+        std::sync::Arc::new(sys_types::SysOps::native()),
+        None,
+    )
+    .expect("Failed to create engine");
 
     // Test passing strings via BexExternalValue
     let result = engine
-        .call_function("concat_strings", vec!["Hello".into(), "World".into()])
+        .call_function(
+            "concat_strings",
+            vec!["Hello".into(), "World".into()],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
         .await
         .expect("call_function failed");
 
@@ -284,7 +354,9 @@ async fn test_call_function_with_external_args() {
 
     // Test passing an array via BexExternalValue
     let arr = BexExternalValue::Array {
-        element_type: Ty::Int,
+        element_type: Ty::Int {
+            attr: TyAttr::default(),
+        },
         items: vec![
             BexExternalValue::Int(1),
             BexExternalValue::Int(2),
@@ -293,7 +365,11 @@ async fn test_call_function_with_external_args() {
         ],
     };
     let result = engine
-        .call_function("sum_array", vec![arr])
+        .call_function(
+            "sum_array",
+            vec![arr],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
+        )
         .await
         .expect("call_function failed");
 
@@ -304,6 +380,7 @@ async fn test_call_function_with_external_args() {
         .call_function(
             "add_numbers",
             vec![BexExternalValue::from(15i64), BexExternalValue::from(27i64)],
+            FunctionCallContextBuilder::new(sys_types::CallId::next()).build(),
         )
         .await
         .expect("call_function failed");

@@ -190,9 +190,24 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     const content = args.content ?? "";
+    const latestBep = await ctx.db
+      .query("beps")
+      .withIndex("by_number")
+      .order("desc")
+      .first();
+
+    let bepNumber = Math.max(args.number, (latestBep?.number ?? 0) + 1);
+    while (true) {
+      const existing = await ctx.db
+        .query("beps")
+        .withIndex("by_number", (q) => q.eq("number", bepNumber))
+        .unique();
+      if (!existing) break;
+      bepNumber += 1;
+    }
 
     const bepId = await ctx.db.insert("beps", {
-      number: args.number,
+      number: bepNumber,
       title: args.title,
       status: "draft",
       shepherds: args.shepherds,
@@ -242,7 +257,7 @@ export const create = mutation({
       createdAt: now,
     });
 
-    return bepId;
+    return { bepId, number: bepNumber };
   },
 });
 
@@ -264,6 +279,7 @@ export const update = mutation({
     ),
     userId: v.id("users"),
     editNote: v.optional(v.string()),
+    versionMode: v.optional(v.union(v.literal("new"), v.literal("current"))),
   },
   handler: async (ctx, args) => {
     const bep = await ctx.db.get(args.id);
@@ -336,13 +352,26 @@ export const update = mutation({
       order: p.order,
     }));
 
-    // Create new version
+    // Get the latest version for this BEP
     const latestVersion = await ctx.db
       .query("bepVersions")
       .withIndex("by_bep", (q) => q.eq("bepId", args.id))
       .order("desc")
       .first();
 
+    // Apply changes to current version (in-place) when requested
+    if (args.versionMode === "current" && latestVersion) {
+      await ctx.db.patch(latestVersion._id, {
+        title: args.title ?? bep.title,
+        content: args.content ?? bep.content ?? "",
+        pagesSnapshot: pagesSnapshot.length > 0 ? pagesSnapshot : undefined,
+        editedBy: args.userId,
+        editNote: args.editNote ?? latestVersion.editNote,
+      });
+      return;
+    }
+
+    // Default behavior: create a new version
     const newVersionNumber = (latestVersion?.version ?? 0) + 1;
 
     const newVersionId = await ctx.db.insert("bepVersions", {
@@ -490,7 +519,7 @@ export const reorderPages = mutation({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IMPORT MUTATION (creates new version from imported content)
+// IMPORT MUTATION (imports content and optionally creates a new version)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const importVersion = mutation({
@@ -506,6 +535,7 @@ export const importVersion = mutation({
     ),
     editNote: v.optional(v.string()),
     userId: v.id("users"),
+    versionMode: v.optional(v.union(v.literal("new"), v.literal("current"))),
   },
   handler: async (ctx, args) => {
     // 1. Get current BEP
@@ -519,6 +549,10 @@ export const importVersion = mutation({
       .order("desc")
       .first();
 
+    const shouldCreateNewVersion =
+      args.versionMode === undefined ||
+      args.versionMode === "new" ||
+      !latestVersion;
     const newVersionNumber = (latestVersion?.version ?? 0) + 1;
     const now = Date.now();
 
@@ -602,46 +636,64 @@ export const importVersion = mutation({
     // Sort by order for the snapshot
     processedPages.sort((a, b) => a.order - b.order);
 
-    // 5. Create new version snapshot
-    const versionId = await ctx.db.insert("bepVersions", {
-      bepId: args.bepId,
-      version: newVersionNumber,
-      title: bep.title, // Keep the existing title
+    const pagesCreated = args.pages.filter(
+      (p) => !existingPagesBySlug.has(p.slug)
+    ).length;
+    const pagesUpdated = args.pages.filter((p) =>
+      existingPagesBySlug.has(p.slug)
+    ).length;
+
+    if (shouldCreateNewVersion) {
+      // 5a. Create a new version snapshot
+      const versionId = await ctx.db.insert("bepVersions", {
+        bepId: args.bepId,
+        version: newVersionNumber,
+        title: bep.title, // Keep the existing title
+        content: args.content,
+        pagesSnapshot: processedPages.length > 0 ? processedPages : undefined,
+        editedBy: args.userId,
+        editNote: args.editNote ?? "Imported from markdown",
+        createdAt: now,
+      });
+
+      // 6a. Trigger version analysis if this is v2 or later
+      if (newVersionNumber >= 2 && latestVersion) {
+        await ctx.scheduler.runAfter(0, internal.analysisJobs.create, {
+          bepId: args.bepId,
+          versionId,
+          previousVersionId: latestVersion._id,
+        });
+      }
+
+      return {
+        versionId,
+        versionNumber: newVersionNumber,
+        versionAction: "created" as const,
+        pagesCreated,
+        pagesUpdated,
+      };
+    }
+
+    // 5b. Update the current version in place
+    if (!latestVersion) {
+      throw new Error("Latest version not found");
+    }
+
+    const versionId = latestVersion._id;
+    await ctx.db.patch(latestVersion._id, {
+      title: bep.title,
       content: args.content,
       pagesSnapshot: processedPages.length > 0 ? processedPages : undefined,
       editedBy: args.userId,
-      editNote: args.editNote ?? "Imported from markdown",
-      createdAt: now,
+      editNote: args.editNote ?? latestVersion.editNote,
     });
-
-    // 6. Trigger version analysis if this is v2 or later
-    if (newVersionNumber >= 2) {
-      // Get the previous version
-      const previousVersion = await ctx.db
-        .query("bepVersions")
-        .withIndex("by_bep_version", (q) =>
-          q.eq("bepId", args.bepId).eq("version", newVersionNumber - 1)
-        )
-        .unique();
-
-      if (previousVersion) {
-        await ctx.scheduler.runAfter(0, internal.analysisJobs.create, {
-          bepId: args.bepId,
-          versionId: versionId,
-          previousVersionId: previousVersion._id,
-        });
-      }
-    }
 
     return {
       versionId,
-      versionNumber: newVersionNumber,
-      pagesCreated: args.pages.filter(
-        (p) => !existingPagesBySlug.has(p.slug)
-      ).length,
-      pagesUpdated: args.pages.filter((p) =>
-        existingPagesBySlug.has(p.slug)
-      ).length,
+      versionNumber: latestVersion.version,
+      versionAction: "updated" as const,
+      pagesCreated,
+      pagesUpdated,
     };
   },
 });

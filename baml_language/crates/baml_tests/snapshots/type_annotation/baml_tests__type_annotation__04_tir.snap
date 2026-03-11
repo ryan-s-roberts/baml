@@ -1,0 +1,20 @@
+---
+source: crates/baml_tests/src/generated_tests.rs
+---
+=== TYPE INFERENCE ===
+  Function test_type_annotation:
+    Return: String { attr: TyAttr(None) }
+  Function test_optional:
+    Return: String { attr: TyAttr(None) }
+  Function test_let_binding:
+    Return: String { attr: TyAttr(None) }
+  Function test_param:
+    Return: String { attr: TyAttr(None) }
+  Function test_list:
+    Return: String { attr: TyAttr(None) }
+  Function test_union:
+    Return: String { attr: TyAttr(None) }
+  Function test_return_type:
+    Return: Type { attr: TyAttr(None) }
+  Function test_map:
+    Return: String { attr: TyAttr(None) }

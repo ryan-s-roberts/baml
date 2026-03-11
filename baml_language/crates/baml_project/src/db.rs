@@ -8,12 +8,13 @@
 
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, atomic::AtomicU32},
 };
 
+use baml_compiler_emit::CompileOptions;
 use baml_db::{FileId, SourceFile};
-use baml_workspace::Project;
+use baml_workspace::{Compiler2ExtraFiles, Project};
 use salsa::Setter;
 
 // Note: Builtin BAML files (like llm.baml) are loaded in set_project_root().
@@ -34,8 +35,8 @@ pub type EventCallback = Box<dyn Fn(salsa::Event) + Send + Sync + 'static>;
 ///
 /// ```ignore
 /// let mut db = ProjectDatabase::new();
-/// db.set_project_root(Path::new("/my/project"));
-/// db.add_or_update_file(Path::new("/my/project/main.baml"), "class Foo {}");
+/// db.set_project_root(std::path::Path::new("/my/project"));
+/// db.add_or_update_file(std::path::Path::new("/my/project/main.baml"), "class Foo {}");
 ///
 /// let result = db.check();
 /// for diag in &result.diagnostics {
@@ -51,10 +52,19 @@ pub struct ProjectDatabase {
     next_file_id: Arc<AtomicU32>,
     /// The current project. Set via `set_project_root()`.
     project: Option<Project>,
-    /// Maps file paths to their `SourceFile` handles.
-    file_map: HashMap<PathBuf, SourceFile>,
-    /// Maps `FileId` to file path for reverse lookup.
-    file_id_to_path: HashMap<FileId, PathBuf>,
+    /// Compiler2-only extra files (`baml_builtins2` stubs). Held separately so
+    /// they are NOT added to `project.files()` — the v1 compiler must not see
+    /// them because it cannot parse compiler2-specific syntax.
+    compiler2_extra_files: Option<Compiler2ExtraFiles>,
+    /// Maps file paths to their `SourceFile` handles (user files + v1 builtins only).
+    /// v2 builtin stubs are stored in `compiler2_file_map` instead to prevent them
+    /// from appearing in `get_source_files()` which feeds the v1 compiler pipeline.
+    file_map: HashMap<std::path::PathBuf, SourceFile>,
+    /// Maps file paths to compiler2-only `SourceFile` handles.
+    /// These files are NOT returned by `get_source_files()`.
+    compiler2_file_map: HashMap<std::path::PathBuf, SourceFile>,
+    /// Maps `FileId` to file path for reverse lookup (all files including v2 stubs).
+    file_id_to_path: HashMap<FileId, std::path::PathBuf>,
 }
 
 #[salsa::db]
@@ -69,6 +79,22 @@ impl baml_workspace::Db for ProjectDatabase {
 }
 
 #[salsa::db]
+impl baml_compiler2_hir::Db for ProjectDatabase {
+    fn compiler2_extra_files(&self) -> Option<baml_workspace::Compiler2ExtraFiles> {
+        self.compiler2_extra_files
+    }
+}
+
+#[salsa::db]
+impl baml_compiler2_tir::Db for ProjectDatabase {}
+
+#[salsa::db]
+impl baml_lsp2_actions::Db for ProjectDatabase {}
+
+#[salsa::db]
+impl baml_compiler_ppir::Db for ProjectDatabase {}
+
+#[salsa::db]
 impl baml_compiler_hir::Db for ProjectDatabase {}
 
 #[salsa::db]
@@ -80,6 +106,9 @@ impl baml_compiler_vir::Db for ProjectDatabase {}
 #[salsa::db]
 impl baml_compiler_mir::Db for ProjectDatabase {}
 
+#[salsa::db]
+impl baml_compiler_emit::Db for ProjectDatabase {}
+
 impl ProjectDatabase {
     /// Create a new empty database.
     pub fn new() -> Self {
@@ -87,7 +116,9 @@ impl ProjectDatabase {
             storage: salsa::Storage::default(),
             next_file_id: Arc::new(AtomicU32::new(0)),
             project: None,
+            compiler2_extra_files: None,
             file_map: HashMap::new(),
+            compiler2_file_map: HashMap::new(),
             file_id_to_path: HashMap::new(),
         }
     }
@@ -104,7 +135,9 @@ impl ProjectDatabase {
             storage: salsa::Storage::new(Some(callback)),
             next_file_id: Arc::new(AtomicU32::new(0)),
             project: None,
+            compiler2_extra_files: None,
             file_map: HashMap::new(),
+            compiler2_file_map: HashMap::new(),
             file_id_to_path: HashMap::new(),
         }
     }
@@ -146,14 +179,14 @@ impl ProjectDatabase {
     }
 
     /// Get the file path for a `FileId`.
-    pub fn file_id_to_path(&self, file_id: FileId) -> Option<&PathBuf> {
+    pub fn file_id_to_path(&self, file_id: FileId) -> Option<&std::path::PathBuf> {
         self.file_id_to_path.get(&file_id)
     }
 
     /// Add a file to the database (internal helper).
     fn add_file_internal(
         &mut self,
-        path: impl Into<PathBuf>,
+        path: impl Into<std::path::PathBuf>,
         text: impl Into<String>,
     ) -> SourceFile {
         let file_id = FileId::new(
@@ -171,7 +204,7 @@ impl ProjectDatabase {
     /// Otherwise, a new `SourceFile` is created.
     ///
     /// Returns the `SourceFile` handle.
-    pub fn add_or_update_file(&mut self, path: &Path, content: &str) -> SourceFile {
+    pub fn add_or_update_file(&mut self, path: &std::path::Path, content: &str) -> SourceFile {
         let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
 
         if let Some(&existing_file) = self.file_map.get(&canonical_path) {
@@ -201,7 +234,7 @@ impl ProjectDatabase {
     ///
     /// Note: Salsa doesn't support true removal, but we can remove it from our tracking
     /// and the project's file list.
-    pub fn remove_file(&mut self, path: &Path) {
+    pub fn remove_file(&mut self, path: &std::path::Path) {
         let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
 
         if let Some(file) = self.file_map.remove(&canonical_path) {
@@ -230,7 +263,7 @@ impl ProjectDatabase {
     /// Builtin files are available from the start of the compilation pipeline.
     ///
     /// Returns the created `Project`.
-    pub fn set_project_root(&mut self, root: &Path) -> Project {
+    pub fn set_project_root(&mut self, root: &std::path::Path) -> Project {
         let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
 
         // Collect existing user files that are under this root
@@ -241,66 +274,92 @@ impl ProjectDatabase {
             .map(|(_, f)| *f)
             .collect();
 
-        // Load builtin BAML files after user files (matches production order)
-        let builtin_files = self.load_builtin_baml_files();
+        // Load v1 builtin BAML files (for the shared project.files() list).
+        // v2 builtin stubs are loaded separately into compiler2_extra_files.
+        let (v1_builtin_files, v2_builtin_files) = self.load_builtin_baml_files();
 
-        // Combine user files with builtin files (user first, then builtins)
+        // Combine user files with v1 builtin files (user first, then builtins)
         let mut all_files = user_files;
-        all_files.extend(builtin_files);
+        all_files.extend(v1_builtin_files);
 
-        // Create and set the project
+        // Create and set the project (v1 compiler only sees this)
         let project = Project::new(self, canonical_root, all_files);
         self.project = Some(project);
+
+        // Create the compiler2 extra files Salsa input (separate from project.files)
+        let compiler2_extra = Compiler2ExtraFiles::new(self, v2_builtin_files);
+        self.compiler2_extra_files = Some(compiler2_extra);
+
         project
     }
 
     /// Load builtin BAML source files into the database.
     ///
-    /// These files provide implementations for builtin namespaces like `baml.llm`.
-    /// They are loaded once when the project is set up and included in the
-    /// compilation pipeline from the start.
-    ///
-    /// Builtin files use the normal `FileId` allocation just like user files.
-    /// They are registered in both `file_id_to_path` (for diagnostic filename
-    /// display) and `file_map` (so builtins are included in `files()` iteration
-    /// and `check()` diagnostics).
+    /// Returns two lists:
+    /// - `(v1_files, v2_files)` where `v1_files` are for the shared `project.files()`
+    ///   (visible to both compilers) and `v2_files` are compiler2-only stubs that must
+    ///   NOT be added to `project.files()` because the v1 parser cannot handle
+    ///   compiler2-specific syntax (generic type parameters, `$rust_type`, etc.).
     ///
     /// ## Note on goto-definition
     ///
     /// Builtin files use virtual paths like `<builtin>/baml/llm.baml`. These paths
     /// are embedded in the compiler binary, not present on the user's filesystem.
     /// As a result, goto-definition to builtins won't work in editors.
-    ///
-    /// Future enhancement: To support goto-definition for builtins, we could:
-    /// 1. Extract builtin files to a cache directory (e.g., `~/.cache/baml/builtins/`)
-    /// 2. Register the real filesystem paths instead of virtual paths
-    /// 3. Ensure the cache is updated when the compiler version changes
-    fn load_builtin_baml_files(&mut self) -> Vec<SourceFile> {
-        let mut builtin_files = Vec::new();
+    fn load_builtin_baml_files(&mut self) -> (Vec<SourceFile>, Vec<SourceFile>) {
+        let mut v1_builtin_files = Vec::new();
 
-        // Load all builtin BAML sources using normal file ID allocation
+        // Load all v1 builtin BAML sources (disk read on native, embedded on WASM)
         for builtin_source in baml_builtins::baml_sources() {
             let path = PathBuf::from(builtin_source.path);
-            let file = self.add_file_internal(&path, builtin_source.source.to_string());
+            let file = self.add_file_internal(&path, builtin_source.source());
             let file_id = file.file_id(self);
 
             // Register in file_id_to_path for diagnostic filename display
             // and in file_map so builtins are included in check() diagnostics.
-            // Builtin signatures use fully qualified type names (e.g., baml.http.Request)
-            // which resolve through the builtin class_names registry.
             self.file_id_to_path.insert(file_id, path.clone());
             self.file_map.insert(path, file);
 
-            builtin_files.push(file);
+            v1_builtin_files.push(file);
         }
 
-        builtin_files
+        // Load compiler2-only builtin stub files (Array<T>, Map<K,V>, String, Media, etc.)
+        // These flow through the compiler2 HIR pipeline: package_items(db, "baml")
+        // will contain Array, Map, String, Media, and the baml.env / baml.http /
+        // baml.math / baml.sys namespaces.
+        //
+        // IMPORTANT: These are stored in `compiler2_file_map` (NOT `file_map`) so
+        // that `get_source_files()` does NOT return them and they are never passed
+        // to the v1 parser. The v1 parser cannot handle compiler2-specific syntax:
+        // generic type parameters, `$rust_type`, void functions without explicit
+        // return types, `root.sys.xxx` qualified calls, etc.
+        let mut v2_builtin_files = Vec::new();
+        for builtin in baml_builtins2::ALL {
+            // Use the BuiltinFile's virtual_path() to get the correct path.
+            // Root files: "<builtin>/baml/containers.baml"
+            // Namespaced files: "<builtin>/baml/env/env.baml"
+            let virtual_path = builtin.virtual_path();
+            let path = PathBuf::from(&virtual_path);
+            let file = self.add_file_internal(&path, builtin.contents);
+            let file_id = file.file_id(self);
+
+            // Register in file_id_to_path for diagnostic filename display
+            // but in compiler2_file_map (not file_map!) so the v1 compiler
+            // never sees these files.
+            self.file_id_to_path.insert(file_id, path.clone());
+            self.compiler2_file_map.insert(path, file);
+
+            v2_builtin_files.push(file);
+        }
+
+        (v1_builtin_files, v2_builtin_files)
     }
 
+    /// Register synthetic stream-expansion files in the reverse-lookup maps.
     /// Add a file to the database.
     ///
     /// This is an alias for `add_or_update_file` for API compatibility.
-    pub fn add_file(&mut self, path: impl AsRef<Path>, content: &str) -> SourceFile {
+    pub fn add_file(&mut self, path: impl AsRef<std::path::Path>, content: &str) -> SourceFile {
         self.add_or_update_file(path.as_ref(), content)
     }
 
@@ -309,27 +368,169 @@ impl ProjectDatabase {
         self.file_map.values().copied()
     }
 
+    /// Get all file paths currently tracked by the database.
+    pub fn non_builtin_file_paths(&self) -> impl Iterator<Item = std::path::PathBuf> {
+        self.file_map
+            .keys()
+            .filter(|path| !path.starts_with(baml_builtins::BUILTIN_PATH_PREFIX))
+            .cloned()
+    }
+
     /// Get a `SourceFile` by its path.
-    pub fn get_file(&self, path: &Path) -> Option<SourceFile> {
+    pub fn get_file(&self, path: &std::path::Path) -> Option<SourceFile> {
         let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         self.file_map.get(&canonical_path).copied()
     }
 
     /// Get a `FileId` by its path.
-    pub fn path_to_file_id(&self, path: &Path) -> Option<FileId> {
+    pub fn path_to_file_id(&self, path: &std::path::Path) -> Option<FileId> {
         self.get_file(path).map(|file| file.file_id(self))
     }
 
     /// Get the file path for a `FileId`.
-    pub fn get_path(&self, file_id: FileId) -> Option<&Path> {
-        self.file_id_to_path.get(&file_id).map(PathBuf::as_path)
+    pub fn get_path(&self, file_id: FileId) -> Option<&std::path::Path> {
+        self.file_id_to_path
+            .get(&file_id)
+            .map(std::path::PathBuf::as_path)
     }
 
     /// Get a `SourceFile` by its `FileId`.
     pub fn get_file_by_id(&self, file_id: FileId) -> Option<SourceFile> {
-        self.file_id_to_path
-            .get(&file_id)
-            .and_then(|path| self.file_map.get(path).copied())
+        self.file_id_to_path.get(&file_id).and_then(|path| {
+            self.file_map
+                .get(path)
+                .or_else(|| self.compiler2_file_map.get(path))
+                .copied()
+        })
+    }
+
+    /// Build the control flow visualization graph for a function.
+    ///
+    /// Returns `None` if the function is not found, is compiler-generated
+    /// (`render_prompt`, `build_request`, `client_resolve`), or has errors that
+    /// prevent VIR lowering.
+    pub fn control_flow_graph(
+        &self,
+        function_name: &str,
+    ) -> Option<baml_compiler_vir::control_flow::ControlFlowGraph> {
+        use baml_compiler_hir::{
+            FunctionBody, ItemId, file_item_tree, file_items, function_body, function_signature,
+            function_signature_source_map,
+        };
+        use baml_compiler_tir::{
+            class_field_types, enum_variants, infer_function, type_aliases, typing_context,
+        };
+        use baml_compiler_vir::control_flow::{
+            build_control_flow_graph, build_llm_control_flow_graph,
+        };
+
+        let project = self.project?;
+        let files = project.files(self);
+
+        // Build typing context lazily (only if we find an expr function)
+        let mut typing_ctx = None;
+
+        for source_file in files {
+            let items_struct = file_items(self, *source_file);
+            for item in items_struct.items(self) {
+                let ItemId::Function(func_loc) = item else {
+                    continue;
+                };
+                let item_tree = file_item_tree(self, func_loc.file(self));
+                let func = &item_tree[func_loc.id(self)];
+
+                // Skip compiler-generated functions
+                if let Some(ref cg) = func.compiler_generated {
+                    use baml_compiler_hir::CompilerGenerated;
+                    match cg {
+                        CompilerGenerated::ClientResolve { .. }
+                        | CompilerGenerated::LlmRenderPrompt { .. }
+                        | CompilerGenerated::LlmBuildRequest { .. } => continue,
+                        CompilerGenerated::LlmCall { .. } => {
+                            // LlmCall functions have an expr body that wraps the LLM call.
+                            // We can still build a control flow graph for them.
+                        }
+                    }
+                }
+
+                let sig = function_signature(self, *func_loc);
+                if sig.name != function_name {
+                    continue;
+                }
+
+                // Found the function — check body type
+                let body = function_body(self, *func_loc);
+                match body.as_ref() {
+                    FunctionBody::Llm(llm_body) => {
+                        return Some(build_llm_control_flow_graph(
+                            function_name,
+                            llm_body.client.as_ref(),
+                        ));
+                    }
+                    FunctionBody::Expr(_, _) => {
+                        // Lazy-init typing context
+                        let ctx = typing_ctx.get_or_insert_with(|| {
+                            let globals = typing_context(self, project).functions(self).clone();
+                            let class_fields =
+                                class_field_types(self, project).classes(self).clone();
+                            let ta = type_aliases(self, project).aliases(self).clone();
+                            let recursive = baml_compiler_tir::find_recursive_aliases(&ta);
+                            let ev = enum_variants(self, project).enums(self).clone();
+                            let resolution_ctx =
+                                baml_compiler_tir::TypeResolutionContext::new(self, project);
+                            (globals, class_fields, ta, recursive, ev, resolution_ctx)
+                        });
+
+                        let sig_source_map = function_signature_source_map(self, *func_loc);
+                        let inference = infer_function(
+                            self,
+                            &sig,
+                            Some(&sig_source_map),
+                            &body,
+                            Some(ctx.0.clone()),
+                            Some(ctx.1.clone()),
+                            Some(ctx.2.clone()),
+                            Some(ctx.4.clone()),
+                            *func_loc,
+                        );
+
+                        match baml_compiler_vir::lower_from_hir(
+                            &body, &inference, &ctx.5, &ctx.2, &ctx.3,
+                        ) {
+                            Ok(vir_body) => {
+                                return Some(build_control_flow_graph(function_name, &vir_body));
+                            }
+                            Err(baml_compiler_vir::LoweringError::LlmFunction) => {
+                                // Shouldn't happen since we check FunctionBody first,
+                                // but handle gracefully
+                                return None;
+                            }
+                            Err(_) => return None,
+                        }
+                    }
+                    FunctionBody::Missing => return None,
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Get the compiled bytecode for the project.
+    pub fn get_bytecode(&self) -> Result<bex_vm_types::Program, baml_compiler_emit::LoweringError> {
+        // First ensure no diagnostics errors are present
+        let diagnostics = self.check();
+        if diagnostics
+            .diagnostics
+            .iter()
+            .any(|diag| diag.severity == baml_compiler_diagnostics::Severity::Error)
+        {
+            return Err(baml_compiler_emit::LoweringError::HasDiagnosticsErrors);
+        }
+        let opts = CompileOptions {
+            emit_test_cases: false,
+        };
+        baml_compiler_emit::generate_project_bytecode(self, &opts)
     }
 }
 
@@ -355,7 +556,7 @@ mod tests {
     #[test]
     fn test_add_file() {
         let mut db = ProjectDatabase::new();
-        let path = Path::new("/tmp/test.baml");
+        let path = std::path::Path::new("/tmp/test.baml");
         let content = "class Foo { name string }";
 
         let file = db.add_or_update_file(path, content);
@@ -365,7 +566,7 @@ mod tests {
     #[test]
     fn test_update_file() {
         let mut db = ProjectDatabase::new();
-        let path = Path::new("/tmp/test.baml");
+        let path = std::path::Path::new("/tmp/test.baml");
 
         let file1 = db.add_or_update_file(path, "class Foo {}");
         let file2 = db.add_or_update_file(path, "class Bar {}");
@@ -379,7 +580,7 @@ mod tests {
     #[test]
     fn test_set_project_root() {
         let mut db = ProjectDatabase::new();
-        db.set_project_root(Path::new("/tmp"));
+        db.set_project_root(std::path::Path::new("/tmp"));
 
         assert!(db.get_project().is_some());
     }

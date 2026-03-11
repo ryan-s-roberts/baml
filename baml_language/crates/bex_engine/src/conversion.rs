@@ -6,6 +6,7 @@
 
 use baml_type::Literal;
 use bex_external_types::{BexExternalAdt, BexExternalValue, EpochGuard, Ty, UnionMetadata};
+use bex_heap::BexValue;
 use bex_vm::BexVm;
 use bex_vm_types::{HeapPtr, Object, Value};
 
@@ -62,14 +63,14 @@ impl BexEngine {
             Object::String(s) => Ok(BexExternalValue::String(s.clone())),
 
             Object::Array(arr) => {
-                // Get element type from declared type
+                // Get element type from declared type, falling back to Null when
+                // the declared type doesn't resolve (e.g., builtin class arrays)
+
                 let element_type = match effective_type {
-                    Ty::List(elem_ty) => elem_ty.as_ref(),
-                    other => {
-                        return Err(EngineError::TypeMismatch {
-                            message: format!("VM has Array but declared type is {other:?}"),
-                        });
-                    }
+                    Ty::List(elem_ty, _) => elem_ty.as_ref(),
+                    _ => &Ty::Null {
+                        attr: baml_type::TyAttr::default(),
+                    },
                 };
 
                 let items: Result<Vec<_>, _> = arr
@@ -83,14 +84,19 @@ impl BexEngine {
             }
 
             Object::Map(map) => {
-                // Get key and value types from declared type
+                // Get key and value types from declared type, falling back to
+                // Null when the declared type doesn't resolve
+
                 let (key_type, value_type) = match effective_type {
-                    Ty::Map { key, value } => (key.as_ref(), value.as_ref()),
-                    other => {
-                        return Err(EngineError::TypeMismatch {
-                            message: format!("VM has Map but declared type is {other:?}"),
-                        });
-                    }
+                    Ty::Map { key, value, .. } => (key.as_ref(), value.as_ref()),
+                    _ => (
+                        &Ty::String {
+                            attr: baml_type::TyAttr::default(),
+                        },
+                        &Ty::Null {
+                            attr: baml_type::TyAttr::default(),
+                        },
+                    ),
                 };
 
                 let entries: Result<indexmap::IndexMap<String, BexExternalValue>, EngineError> =
@@ -192,6 +198,8 @@ impl BexEngine {
             Object::PromptAst(ast) => Ok(BexExternalValue::Adt(BexExternalAdt::PromptAst(
                 ast.clone(),
             ))),
+            Object::Collector(c) => Ok(BexExternalValue::Adt(BexExternalAdt::Collector(c.clone()))),
+            Object::Type(ty) => Ok(BexExternalValue::Adt(BexExternalAdt::Type(ty.clone()))),
             #[cfg(feature = "heap_debug")]
             Object::Sentinel(_) => Err(EngineError::CannotSnapshot {
                 type_name: "sentinel".to_string(),
@@ -263,14 +271,33 @@ impl BexEngine {
                 }
                 vm.alloc_instance(*class_ptr, values)
             }
-            BexExternalValue::Variant { .. } => {
-                panic!("Unexpected Variant from sys op")
+            BexExternalValue::Variant {
+                enum_name,
+                variant_name,
+            } => {
+                let enum_ptr = self.resolved_enum_names.get(&enum_name).unwrap_or_else(|| {
+                    panic!("Enum '{enum_name}' not found in resolved_enum_names")
+                });
+                #[allow(unsafe_code)]
+                let bex_vm_types::Object::Enum(enum_obj) = (unsafe { enum_ptr.get() }) else {
+                    panic!("Expected Object::Enum for '{enum_name}'");
+                };
+                let index = enum_obj
+                    .variants
+                    .iter()
+                    .position(|v| v.name == variant_name)
+                    .unwrap_or_else(|| {
+                        panic!("Variant '{variant_name}' not found in enum '{enum_name}'")
+                    });
+                vm.alloc_variant(*enum_ptr, index)
             }
             BexExternalValue::Union { value, .. } => {
                 self.convert_external_to_vm_value(vm, *value, guard)
             }
             BexExternalValue::Adt(BexExternalAdt::Media(media)) => vm.alloc_media(media),
             BexExternalValue::Adt(BexExternalAdt::PromptAst(ast)) => vm.alloc_prompt_ast(ast),
+            BexExternalValue::Adt(BexExternalAdt::Collector(c)) => vm.alloc_collector(c),
+            BexExternalValue::Adt(BexExternalAdt::Type(ty)) => vm.alloc_type(ty),
             BexExternalValue::FunctionRef { global_index } => {
                 let idx = bex_vm_types::GlobalIndex::from_raw(global_index);
                 assert!(
@@ -303,6 +330,32 @@ impl BexEngine {
         }
     }
 
+    /// Convert a VM value to a fully owned `BexExternalValue` (deep copy).
+    ///
+    /// Unlike `vm_arg_to_bex_value` which creates `Handle` references for objects,
+    /// this method deep-copies heap objects into standalone values. Use this for
+    /// trace event payloads that escape the engine scope (e.g. event collectors).
+    pub(crate) fn vm_value_to_owned(&self, value: &Value) -> BexExternalValue {
+        match value {
+            Value::Null => BexExternalValue::Null,
+            Value::Int(i) => BexExternalValue::Int(*i),
+            Value::Float(f) => BexExternalValue::Float(*f),
+            Value::Bool(b) => BexExternalValue::Bool(*b),
+            Value::Object(ptr) => self
+                .heap
+                .with_gc_protection(|protected| {
+                    BexValue::HeapPtr(ptr).as_owned_but_very_slow(&protected)
+                })
+                .unwrap_or_else(|_| {
+                    #[allow(clippy::print_stderr)]
+                    {
+                        eprintln!("Failed to deep-copy VM value for trace payload");
+                    }
+                    BexExternalValue::Null
+                }),
+        }
+    }
+
     /// Convert VM values to `BexExternalValues` for sys ops.
     ///
     /// This is simpler than `vm_value_to_external` because sys ops only receive
@@ -323,7 +376,7 @@ pub(crate) fn maybe_wrap_union(
     declared_type: &Ty,
 ) -> Result<BexExternalValue, EngineError> {
     match declared_type {
-        Ty::Union(members) => {
+        Ty::Union(members, _) => {
             let selected = find_matching_member(&value, members)?;
             let metadata = UnionMetadata::new(declared_type.clone(), selected);
             Ok(BexExternalValue::Union {
@@ -331,9 +384,11 @@ pub(crate) fn maybe_wrap_union(
                 metadata,
             })
         }
-        Ty::Optional(inner) => {
+        Ty::Optional(inner, opt_attr) => {
             let selected = if matches!(value, BexExternalValue::Null) {
-                Ty::Null
+                Ty::Null {
+                    attr: opt_attr.clone(),
+                }
             } else {
                 (**inner).clone()
             };
@@ -367,30 +422,40 @@ fn find_matching_member(value: &BexExternalValue, members: &[Ty]) -> Result<Ty, 
 /// Check if a value matches a declared type.
 fn value_matches_type(value: &BexExternalValue, ty: &Ty) -> bool {
     match (value, ty) {
-        (BexExternalValue::Null, Ty::Null) => true,
-        (BexExternalValue::Int(_), Ty::Int) => true,
-        (BexExternalValue::Float(_), Ty::Float) => true,
-        (BexExternalValue::Bool(_), Ty::Bool) => true,
-        (BexExternalValue::String(_), Ty::String) => true,
+        (BexExternalValue::Null, Ty::Null { .. }) => true,
+        (BexExternalValue::Int(_), Ty::Int { .. }) => true,
+        (BexExternalValue::Float(_), Ty::Float { .. }) => true,
+        (BexExternalValue::Bool(_), Ty::Bool { .. }) => true,
+        (BexExternalValue::String(_), Ty::String { .. }) => true,
         // Literal types match their corresponding runtime values
-        (BexExternalValue::Int(_), Ty::Literal(Literal::Int(_))) => true,
-        (BexExternalValue::Float(_), Ty::Literal(Literal::Float(_))) => true,
-        (BexExternalValue::String(_), Ty::Literal(Literal::String(_))) => true,
-        (BexExternalValue::Bool(_), Ty::Literal(Literal::Bool(_))) => true,
-        (BexExternalValue::Array { .. }, Ty::List(_)) => true,
+        (BexExternalValue::Int(_), Ty::Literal(Literal::Int(_), _)) => true,
+        (BexExternalValue::Float(_), Ty::Literal(Literal::Float(_), _)) => true,
+        (BexExternalValue::String(_), Ty::Literal(Literal::String(_), _)) => true,
+        (BexExternalValue::Bool(_), Ty::Literal(Literal::Bool(_), _)) => true,
+        (BexExternalValue::Array { .. }, Ty::List(_, _)) => true,
         (BexExternalValue::Map { .. }, Ty::Map { .. }) => true,
-        (BexExternalValue::Instance { class_name, .. }, Ty::Class(tn)) => {
+        (BexExternalValue::Instance { class_name, .. }, Ty::Class(tn, _)) => {
             class_name.as_str() == tn.display_name.as_str()
         }
-        (BexExternalValue::Variant { enum_name, .. }, Ty::Enum(tn)) => {
+        (BexExternalValue::Variant { enum_name, .. }, Ty::Enum(tn, _)) => {
             enum_name.as_str() == tn.display_name.as_str()
         }
-        (BexExternalValue::Adt(BexExternalAdt::Media(_)), Ty::Media(_)) => true,
-        (BexExternalValue::Adt(BexExternalAdt::PromptAst(_)), Ty::PromptAst) => true,
+        (BexExternalValue::Adt(BexExternalAdt::Media(_)), Ty::Media(_, _)) => true,
+        (BexExternalValue::Adt(BexExternalAdt::PromptAst(_)), ty)
+            if ty.is_opaque("baml.llm.PromptAst") =>
+        {
+            true
+        }
+        (BexExternalValue::Adt(BexExternalAdt::Collector(_)), _) => false,
+        (BexExternalValue::Adt(BexExternalAdt::Type(_)), ty)
+            if ty.is_opaque("baml.reflect.Type") =>
+        {
+            true
+        }
         (BexExternalValue::Union { value, .. }, ty) => value_matches_type(value, ty),
         // Handle nested unions/optionals in the type
-        (value, Ty::Union(members)) => members.iter().any(|m| value_matches_type(value, m)),
-        (value, Ty::Optional(inner)) => {
+        (value, Ty::Union(members, _)) => members.iter().any(|m| value_matches_type(value, m)),
+        (value, Ty::Optional(inner, _)) => {
             matches!(value, BexExternalValue::Null) || value_matches_type(value, inner)
         }
         _ => false,
@@ -402,8 +467,15 @@ fn value_matches_type(value: &BexExternalValue, ty: &Ty) -> bool {
 /// If the declared type is not a union, returns it unchanged.
 fn resolve_effective_type<'a>(value: &Value, declared_type: &'a Ty) -> &'a Ty {
     match declared_type {
-        Ty::Union(members) => find_matching_union_member(value, members)
+        Ty::Union(members, _) => find_matching_union_member(value, members)
             .unwrap_or_else(|| members.first().unwrap_or(declared_type)),
+        Ty::Optional(inner, _) => {
+            if matches!(value, Value::Null) {
+                declared_type
+            } else {
+                resolve_effective_type(value, inner)
+            }
+        }
         _ => declared_type,
     }
 }
@@ -411,28 +483,28 @@ fn resolve_effective_type<'a>(value: &Value, declared_type: &'a Ty) -> &'a Ty {
 /// Find the union member that matches the runtime value's type.
 fn find_matching_union_member<'a>(value: &Value, members: &'a [Ty]) -> Option<&'a Ty> {
     match value {
-        Value::Null => members.iter().find(|m| matches!(m, Ty::Null)),
+        Value::Null => members.iter().find(|m| matches!(m, Ty::Null { .. })),
         Value::Int(_) => members
             .iter()
-            .find(|m| matches!(m, Ty::Int | Ty::Literal(Literal::Int(_)))),
+            .find(|m| matches!(m, Ty::Int { .. } | Ty::Literal(Literal::Int(_), _))),
         Value::Float(_) => members
             .iter()
-            .find(|m| matches!(m, Ty::Float | Ty::Literal(Literal::Float(_)))),
+            .find(|m| matches!(m, Ty::Float { .. } | Ty::Literal(Literal::Float(_), _))),
         Value::Bool(_) => members
             .iter()
-            .find(|m| matches!(m, Ty::Bool | Ty::Literal(Literal::Bool(_)))),
+            .find(|m| matches!(m, Ty::Bool { .. } | Ty::Literal(Literal::Bool(_), _))),
         Value::Object(ptr) => {
             let obj = unsafe { ptr.get() };
             match obj {
                 Object::String(_) => members
                     .iter()
-                    .find(|m| matches!(m, Ty::String | Ty::Literal(Literal::String(_)))),
+                    .find(|m| matches!(m, Ty::String { .. } | Ty::Literal(Literal::String(_), _))),
                 Object::Instance(inst) => {
                     let class_obj = unsafe { inst.class.get() };
                     if let Object::Class(class) = class_obj {
                         members
                             .iter()
-                            .find(|m| matches!(m, Ty::Class(tn) if tn.display_name.as_str() == class.name.as_str()))
+                            .find(|m| matches!(m, Ty::Class(tn, _) if tn.display_name.as_str() == class.name.as_str()))
                     } else {
                         None
                     }
@@ -442,7 +514,7 @@ fn find_matching_union_member<'a>(value: &Value, members: &'a [Ty]) -> Option<&'
                     if let Object::Enum(enm) = enum_obj {
                         members
                             .iter()
-                            .find(|m| matches!(m, Ty::Enum(tn) if tn.display_name.as_str() == enm.name.as_str()))
+                            .find(|m| matches!(m, Ty::Enum(tn, _) if tn.display_name.as_str() == enm.name.as_str()))
                     } else {
                         None
                     }
@@ -451,7 +523,7 @@ fn find_matching_union_member<'a>(value: &Value, members: &'a [Ty]) -> Option<&'
                     // For arrays, check first element to determine which List type
                     if let Some(first) = elements.first() {
                         members.iter().find(|m| {
-                            if let Ty::List(elem_ty) = m {
+                            if let Ty::List(elem_ty, _) = m {
                                 find_matching_union_member(first, &[elem_ty.as_ref().clone()])
                                     .is_some()
                             } else {
@@ -460,12 +532,12 @@ fn find_matching_union_member<'a>(value: &Value, members: &'a [Ty]) -> Option<&'
                         })
                     } else {
                         // Empty array - match any List type
-                        members.iter().find(|m| matches!(m, Ty::List(_)))
+                        members.iter().find(|m| matches!(m, Ty::List(_, _)))
                     }
                 }
                 Object::Map(_) => members.iter().find(|m| matches!(m, Ty::Map { .. })),
-                Object::Media(_) => members.iter().find(|m| matches!(m, Ty::Media(_))),
-                Object::PromptAst(_) => members.iter().find(|m| matches!(m, Ty::PromptAst)),
+                Object::Media(_) => members.iter().find(|m| matches!(m, Ty::Media(_, _))),
+                Object::PromptAst(_) => members.iter().find(|m| m.is_opaque("baml.llm.PromptAst")),
                 _ => None,
             }
         }
@@ -490,7 +562,9 @@ pub(crate) fn vm_arg_to_external(vm: &BexVm, value: &Value) -> BexExternalValue 
                     let items: Vec<BexExternalValue> =
                         arr.iter().map(|v| vm_arg_to_external(vm, v)).collect();
                     BexExternalValue::Array {
-                        element_type: bex_external_types::Ty::Null,
+                        element_type: bex_external_types::Ty::Null {
+                            attr: baml_type::TyAttr::default(),
+                        },
                         items,
                     }
                 }
@@ -500,8 +574,12 @@ pub(crate) fn vm_arg_to_external(vm: &BexVm, value: &Value) -> BexExternalValue 
                         .map(|(k, v)| (k.clone(), vm_arg_to_external(vm, v)))
                         .collect();
                     BexExternalValue::Map {
-                        key_type: bex_external_types::Ty::String,
-                        value_type: bex_external_types::Ty::Null,
+                        key_type: bex_external_types::Ty::String {
+                            attr: baml_type::TyAttr::default(),
+                        },
+                        value_type: bex_external_types::Ty::Null {
+                            attr: baml_type::TyAttr::default(),
+                        },
                         entries,
                     }
                 }
@@ -537,5 +615,35 @@ pub(crate) fn vm_arg_to_external(vm: &BexVm, value: &Value) -> BexExternalValue 
                 }
             }
         }
+    }
+}
+
+/// Convert a compiled `TestArgValue` to a `BexExternalValue` for function calls.
+pub fn test_arg_to_external(v: &bex_vm_types::TestArgValue) -> BexExternalValue {
+    match v {
+        bex_vm_types::TestArgValue::Null => BexExternalValue::Null,
+        bex_vm_types::TestArgValue::Int(i) => BexExternalValue::Int(*i),
+        bex_vm_types::TestArgValue::Float(f) => BexExternalValue::Float(*f),
+        bex_vm_types::TestArgValue::Bool(b) => BexExternalValue::Bool(*b),
+        bex_vm_types::TestArgValue::String(s) => BexExternalValue::String(s.clone()),
+        bex_vm_types::TestArgValue::Array {
+            element_type,
+            items,
+        } => BexExternalValue::Array {
+            element_type: element_type.clone(),
+            items: items.iter().map(test_arg_to_external).collect(),
+        },
+        bex_vm_types::TestArgValue::Map {
+            key_type,
+            value_type,
+            entries,
+        } => BexExternalValue::Map {
+            key_type: key_type.clone(),
+            value_type: value_type.clone(),
+            entries: entries
+                .iter()
+                .map(|(k, v)| (k.clone(), test_arg_to_external(v)))
+                .collect(),
+        },
     }
 }

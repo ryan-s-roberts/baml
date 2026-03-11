@@ -22,7 +22,7 @@ use bex_vm_types::{
     BinOp, CmpOp, FunctionKind, GlobalPool, HeapPtr, Instruction, Object, ObjectIndex, ObjectPool,
     ObjectType, StackIndex, UnaryOp, Value, Variant,
     bytecode::{self, BlockNotification},
-    types::{FunctionType, Future, FutureType, Instance, PendingFuture, Type},
+    types::{Function, FunctionType, Future, FutureType, Instance, PendingFuture, Type},
 };
 use indexmap::IndexMap;
 
@@ -46,22 +46,41 @@ pub const MAX_FRAMES: usize = 256;
 /// functions) but instead use references to index into [`BexVm::heap`]. Should
 /// be [`Copy`].
 #[derive(Clone, Copy, Debug)]
-pub struct Frame {
+pub(crate) struct Frame {
     /// Pointer to the running function object.
-    pub function: HeapPtr,
+    pub(crate) function: HeapPtr,
 
     /// Instruction pointer (IP) or program counter (PC).
     ///
-    /// Points to the next instruction that the VM will execute. It is of type
-    /// [`isize`] because some jumps can create negative offsets (for loops)
-    /// and it's easier to operate on an [`isize`] and cast it to [`usize`]
-    /// only once (when we index into [`bex_vm_types::Bytecode::instructions`]). However,
-    /// this number should never be negative, otherwise indexing into the
-    /// instruction vec will throw [`InternalError::NegativeInstructionPtr`].
-    pub instruction_ptr: isize,
+    /// Points to the next instruction that the VM will execute.
+    pub(crate) instruction_ptr: usize,
 
     /// Local variables offset in the eval stack.
-    pub locals_offset: StackIndex,
+    pub(crate) locals_offset: StackIndex,
+}
+
+/// Active unwind handler for catch semantics.
+#[derive(Clone, Copy, Debug)]
+struct UnwindHandler {
+    /// Frame depth where this handler is active.
+    frame_depth: usize,
+    /// Instruction pointer to resume at when unwinding to this handler.
+    target_ip: usize,
+    /// Frame-local slot index where the exception value is stored.
+    error_slot: usize,
+    /// Eval-stack depth at registration time. On same-frame unwind the stack
+    /// is truncated back to this depth so stale temporaries don't corrupt the
+    /// handler block.
+    stack_depth: usize,
+}
+
+/// Exception payload used by unwind routing.
+#[derive(Debug)]
+enum VmException {
+    /// User-space throw payload.
+    Thrown(Value),
+    /// Runtime VM error payload.
+    Runtime(VmError),
 }
 
 /// The beast.
@@ -177,7 +196,7 @@ pub struct BexVm {
     /// On each function call we create a new [`Frame`] and push it on this
     /// stack. On each return, we destroy the frame and pop it from the stack
     /// to resume the execution of the previous frame.
-    pub frames: Vec<Frame>,
+    pub(crate) frames: Vec<Frame>,
 
     /// Evaluation stack.
     ///
@@ -195,18 +214,20 @@ pub struct BexVm {
     /// This stores the functions and globally declared variables.
     pub globals: GlobalPool,
 
-    /// Offset of the first runtime allocated object.
-    ///
-    /// Used by GC to know which objects are compile-time vs runtime.
-    pub runtime_allocs_offset: ObjectIndex,
-
     /// Emit dependency graph.
     pub watch: Watch,
 
     /// Tracks which local variables are watched (have @watch).
-    pub watched_vars: HashMap<StackIndex, (String, String)>,
+    pub(crate) watched_vars: HashMap<StackIndex, (String, String)>,
 
     pub interrupt_frame: Option<usize>,
+
+    /// Frame depths for traced function calls. Always sorted ascending (LIFO).
+    /// Checked on `Return` to yield `FunctionExit` notifications.
+    traced_frames: Vec<usize>,
+
+    /// Active unwind handlers (LIFO) for catch semantics.
+    unwind_handlers: Vec<UnwindHandler>,
 }
 
 /// VM execution state.
@@ -236,6 +257,9 @@ pub enum VmExecState {
 
     /// Notify about watched variables.
     Notify(WatchNotification),
+
+    /// Notify about span lifecycle (from traced `Call` / `Return`).
+    SpanNotify(SpanNotification),
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -246,6 +270,29 @@ pub enum WatchNotification {
     Viz {
         function_name: String,
         event: bex_vm_types::bytecode::VizExecEvent,
+    },
+}
+
+/// Span notifications yielded by the VM for callstack tracking.
+///
+/// The VM provides args and result values from the eval stack so the engine
+/// can emit `FunctionStart`/`FunctionEnd` events without additional lookups.
+/// The VM itself has no span state (no `SpanId`, no timing) — all observability
+/// logic lives in the engine.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SpanNotification {
+    /// A traced function call was entered.
+    /// `args` are snapshotted from the eval stack before the frame is pushed.
+    FunctionEnter {
+        function_name: String,
+        frame_depth: usize,
+        args: Vec<Value>,
+    },
+    /// A traced function call is returning.
+    /// `result` is the return value popped from the eval stack.
+    FunctionExit {
+        function_name: String,
+        result: Value,
     },
 }
 
@@ -281,6 +328,10 @@ pub struct BytecodeProgram {
     pub function_global_indices: HashMap<String, usize>,
     /// Pre-formatted Jinja `{% macro %}` definitions for all `template_strings`.
     pub template_strings_macros: String,
+    /// Client build metadata, passed through to `SysOpContext`.
+    pub client_metadata: HashMap<String, bex_vm_types::ClientBuildMeta>,
+    /// Compiled test cases.
+    pub test_cases: Vec<bex_vm_types::TestCase>,
 }
 
 /// Convert a compiled `Program` to a `BytecodeProgram` with native functions attached.
@@ -325,6 +376,8 @@ pub fn convert_program(program: bex_vm_types::Program) -> Result<BytecodeProgram
         resolved_enums_names,
         function_global_indices: program.function_global_indices,
         template_strings_macros: program.template_strings_macros,
+        client_metadata: program.client_metadata,
+        test_cases: program.test_cases,
     })
 }
 
@@ -354,6 +407,8 @@ fn value_type_tag(value: &Value) -> i64 {
                 Object::Media(_) => type_tags::MEDIA,
                 Object::Resource(_) => type_tags::RESOURCE,
                 Object::PromptAst(_) => type_tags::PROMPT_AST,
+                Object::Collector(_) => type_tags::COLLECTOR,
+                Object::Type(_) => type_tags::TYPE,
                 Object::Class(_) => type_tags::UNKNOWN,
                 #[cfg(feature = "heap_debug")]
                 Object::Sentinel(_) => type_tags::UNKNOWN,
@@ -375,7 +430,6 @@ impl BexVm {
     /// The heap is shared across all VMs. Each VM gets its own TLAB
     /// for contention-free allocation.
     pub fn new(heap: Arc<BexHeap>, globals: GlobalPool) -> Self {
-        let runtime_allocs_offset = ObjectIndex::from_raw(heap.compile_time_boundary());
         let tlab = Tlab::new(Arc::clone(&heap));
 
         Self {
@@ -384,10 +438,11 @@ impl BexVm {
             heap,
             tlab,
             globals,
-            runtime_allocs_offset,
             watch: Watch::new(),
             watched_vars: HashMap::new(),
             interrupt_frame: None,
+            traced_frames: Vec::new(),
+            unwind_handlers: Vec::new(),
         }
     }
 
@@ -607,7 +662,8 @@ impl BexVm {
             self.get_object(function)
         );
 
-        self.stack.push(Value::Object(function));
+        self.unwind_handlers.clear();
+
         self.stack.extend(args.iter().copied());
 
         self.frames.push(Frame {
@@ -615,6 +671,11 @@ impl BexVm {
             instruction_ptr: 0,
             locals_offset: StackIndex::from_raw(0),
         });
+
+        // Entry functions need the same frame-local pre-allocation as normal
+        // bytecode calls now that INIT_LOCALS is gone from bytecode.
+        self.allocate_real_locals_for_frame(function)
+            .expect("entry point must be a valid function frame");
     }
 
     /// Restores the VM state and prepares it for the next execution.
@@ -625,6 +686,7 @@ impl BexVm {
         // stack and call stack should be empty.
         self.stack.clear();
         self.frames.clear();
+        self.unwind_handlers.clear();
     }
 
     /// Returns a reference to the pending future.
@@ -744,8 +806,34 @@ impl BexVm {
         }
     }
 
+    /// Allocate a collector object on the heap.
+    pub fn alloc_collector(&mut self, collector: bex_vm_types::CollectorRef) -> Value {
+        Value::Object(self.tlab.alloc(Object::Collector(collector)))
+    }
+
+    /// Get collector ref from a Value.
+    pub fn as_collector(
+        &self,
+        value: &Value,
+    ) -> Result<&bex_vm_types::CollectorRef, InternalError> {
+        let index = self.as_object_ptr(value, ObjectType::Collector)?;
+        let obj = self.get_object(index);
+        match obj {
+            Object::Collector(c) => Ok(c),
+            _ => Err(InternalError::TypeError {
+                expected: ObjectType::Collector.into(),
+                got: ObjectType::of(obj).into(),
+            }),
+        }
+    }
+
     pub fn alloc_media(&mut self, media: bex_vm_types::types::MediaValue) -> Value {
         Value::Object(self.tlab.alloc(Object::Media(media)))
+    }
+
+    /// Allocate a type descriptor object on the heap.
+    pub fn alloc_type(&mut self, ty: baml_type::Ty) -> Value {
+        Value::Object(self.tlab.alloc(Object::Type(ty)))
     }
 
     /// Builds a stack trace for the given error.
@@ -761,7 +849,7 @@ impl BexVm {
             .frames
             .iter()
             .map(|frame| {
-                let function = self.get_object(frame.function).as_function()?.clone();
+                let function = self.get_object(frame.function).as_function()?;
 
                 // VM increments instruction pointer as soon as it reads the
                 // instruction. So in reality the error ocurred on the previous
@@ -769,11 +857,12 @@ impl BexVm {
                 // a bug somewhere.
                 let last_executed_instruction = frame.instruction_ptr.saturating_sub(1);
 
-                #[allow(clippy::cast_sign_loss)] // instruction_ptr is always non-negative
                 Ok(ErrorLocation {
                     function_name: function.name.clone(),
                     function_span: function.span,
-                    error_line: function.bytecode.source_lines[last_executed_instruction as usize],
+                    error_line: function
+                        .bytecode
+                        .source_line_for_pc(last_executed_instruction),
                 })
             })
             .collect::<Result<Vec<_>, VmError>>()
@@ -803,7 +892,6 @@ impl BexVm {
         let locals_offset = self.stack.len();
 
         // Params.
-        self.stack.push(Value::Object(function_ptr));
         self.stack.extend(args.iter().copied());
 
         // Push the new frame.
@@ -812,9 +900,288 @@ impl BexVm {
             instruction_ptr: 0,
             locals_offset: StackIndex::from_raw(locals_offset),
         });
+        self.allocate_real_locals_for_frame(function_ptr)?;
 
         // Execute the interrupt code and return the result.
         self.exec()
+    }
+
+    fn allocate_real_locals_for_frame(&mut self, function_ptr: HeapPtr) -> Result<(), VmError> {
+        let Object::Function(function) = self.get_object(function_ptr) else {
+            return Err(RuntimeError::Other("Invalid frame function".to_string()).into());
+        };
+
+        let new_len = self.stack.len() + function.real_local_count;
+        self.stack.resize(new_len, Value::Null);
+        Ok(())
+    }
+
+    #[inline]
+    fn local_slot_stack_index(locals_offset: StackIndex, slot: usize) -> StackIndex {
+        assert!(
+            slot > 0,
+            "local slot 0 is reserved and should never be materialized on stack"
+        );
+        StackIndex::from_raw(locals_offset.raw() + slot - 1)
+    }
+
+    fn is_panic_runtime_error(error: &VmError) -> bool {
+        match error {
+            VmError::RuntimeError(runtime_error) => matches!(
+                runtime_error,
+                RuntimeError::AssertionError
+                    | RuntimeError::Unreachable
+                    | RuntimeError::StackOverflow
+            ),
+        }
+    }
+
+    fn exception_to_value(&mut self, exception: &VmException) -> Value {
+        match exception {
+            VmException::Thrown(value) => *value,
+            VmException::Runtime(error) => {
+                let prefix = if Self::is_panic_runtime_error(error) {
+                    "panic"
+                } else {
+                    "error"
+                };
+                self.alloc_string(format!("{prefix}: {error}"))
+            }
+        }
+    }
+
+    fn unhandled_exception_error(exception: VmException) -> VmError {
+        match exception {
+            VmException::Thrown(value) => VmError::RuntimeError(RuntimeError::UnhandledThrow {
+                value: crate::debug::display_value(&value),
+            }),
+            VmException::Runtime(error) => error,
+        }
+    }
+
+    fn push_unwind_handler(
+        &mut self,
+        frame_depth: usize,
+        instruction_ptr: usize,
+        handler_offset: isize,
+        error_slot: usize,
+    ) -> Result<(), VmError> {
+        let target_ip = instruction_ptr
+            .checked_add_signed(handler_offset)
+            .ok_or(InternalError::InvalidJump)?;
+        self.unwind_handlers.push(UnwindHandler {
+            frame_depth,
+            target_ip,
+            error_slot,
+            stack_depth: self.stack.len(),
+        });
+        Ok(())
+    }
+
+    fn pop_unwind_handler(&mut self, frame_depth: usize) {
+        if self
+            .unwind_handlers
+            .last()
+            .is_some_and(|handler| handler.frame_depth == frame_depth)
+        {
+            self.unwind_handlers.pop();
+        }
+    }
+
+    fn discard_unwind_handlers_from_depth(&mut self, min_depth: usize) {
+        while self
+            .unwind_handlers
+            .last()
+            .is_some_and(|handler| handler.frame_depth >= min_depth)
+        {
+            self.unwind_handlers.pop();
+        }
+    }
+
+    fn try_unwind_exception(
+        &mut self,
+        frame_idx: &mut usize,
+        function: &mut &'static Function,
+        exception: VmException,
+    ) -> Result<(), VmError> {
+        let current_depth = self.frames.len().saturating_sub(1);
+        let Some(handler_pos) = self
+            .unwind_handlers
+            .iter()
+            .rposition(|handler| handler.frame_depth <= current_depth)
+        else {
+            return Err(Self::unhandled_exception_error(exception));
+        };
+
+        let handler = self.unwind_handlers[handler_pos];
+        // Remove the selected handler and any handlers above it.
+        self.unwind_handlers.truncate(handler_pos);
+
+        // Pop frames until we reach the handler's frame, restoring the stack
+        // to that frame's local window.
+        while self.frames.len().saturating_sub(1) > handler.frame_depth {
+            let popped = self
+                .frames
+                .pop()
+                .expect("unwind requires at least one frame to pop");
+            self.stack.drain(popped.locals_offset..);
+        }
+
+        while self
+            .traced_frames
+            .last()
+            .is_some_and(|depth| *depth > handler.frame_depth)
+        {
+            self.traced_frames.pop();
+        }
+
+        if let Some(interrupt_depth) = self.interrupt_frame
+            && interrupt_depth > handler.frame_depth
+        {
+            self.interrupt_frame = None;
+        }
+
+        // Restore the eval stack to the depth at PushUnwind time. This removes
+        // any stale temporaries from interrupted expressions in the handler frame.
+        self.stack.truncate(handler.stack_depth);
+
+        let exception_value = self.exception_to_value(&exception);
+
+        let locals_offset = self.frames[handler.frame_depth].locals_offset;
+        self.frames[handler.frame_depth].instruction_ptr = handler.target_ip;
+        let error_stack_slot = Self::local_slot_stack_index(locals_offset, handler.error_slot);
+        self.stack[error_stack_slot] = exception_value;
+
+        *frame_idx = handler.frame_depth;
+        *function = unsafe { self.load_function(*frame_idx)? };
+        Ok(())
+    }
+
+    fn resolve_callable_target(&self, callee_value: Value) -> Result<(HeapPtr, usize), VmError> {
+        let expected_type = FunctionType::Callable;
+        let callee_ptr = self.as_object_ptr(&callee_value, expected_type.into())?;
+        let Object::Function(callee_fn) = self.get_object(callee_ptr) else {
+            return Err(InternalError::TypeError {
+                expected: expected_type.into(),
+                got: ObjectType::of(self.get_object(callee_ptr)).into(),
+            }
+            .into());
+        };
+        Ok((callee_ptr, callee_fn.arity))
+    }
+
+    fn execute_call_from_locals_offset(
+        &mut self,
+        callee_ptr: HeapPtr,
+        locals_offset: StackIndex,
+        arg_count: usize,
+        frame_idx: &mut usize,
+        function: &mut &'static Function,
+    ) -> Result<Option<VmExecState>, VmError> {
+        // Can't call a function if it's not a function ¯\_(ツ)_/¯
+        let Object::Function(callee) = self.get_object(callee_ptr) else {
+            return Err(InternalError::TypeError {
+                expected: FunctionType::Callable.into(),
+                got: ObjectType::of(self.get_object(callee_ptr)).into(),
+            }
+            .into());
+        };
+
+        // Compiler should have already checked this so we could
+        // skip it but it's an easy and fast check.
+        if arg_count != callee.arity {
+            return Err(VmError::from(InternalError::InvalidArgumentCount {
+                expected: callee.arity,
+                got: arg_count,
+            }));
+        }
+
+        // Check if we've reached the max call stack size.
+        if self.frames.len() >= MAX_FRAMES {
+            return Err(VmError::RuntimeError(RuntimeError::StackOverflow));
+        }
+
+        let is_traced = callee.trace;
+
+        match callee.kind {
+            FunctionKind::Native(func_ptr) => {
+                // Cast the type-erased pointer back to NativeFunction.
+                //
+                // SAFETY: The pointer was created by casting a NativeFunction to *const ()
+                // in attach_builtins, so it's safe to cast it back. We use transmute
+                // because Rust doesn't allow `as` casts from *const () to fn pointers.
+                // The explicit type parameters document exactly what we're doing.
+                let func = unsafe { std::mem::transmute::<*const (), NativeFunction>(func_ptr) };
+
+                // NOTE: (perf) could use drain(..) instead, or even maintain the arguments
+                // reference in the stack, using `swap` to insert the result.
+                let args = self.stack[locals_offset..].to_owned();
+
+                // Run Rust native function.
+                let result = func(self, &args)?;
+
+                // Drop function call and place result on top.
+                self.stack.drain(locals_offset..);
+                self.stack.push(result);
+            }
+
+            FunctionKind::Bytecode => {
+                // For traced functions, snapshot args before pushing the frame.
+                let trace_data = if is_traced {
+                    let args: Vec<Value> = self.stack[locals_offset..].to_owned();
+                    let callee_name = callee.name.clone();
+                    Some((callee_name, args))
+                } else {
+                    None
+                };
+
+                // Push the new frame.
+                self.frames.push(Frame {
+                    function: callee_ptr,
+                    instruction_ptr: 0,
+                    locals_offset,
+                });
+                self.allocate_real_locals_for_frame(callee_ptr)?;
+
+                // Update frame_idx to point to the new frame.
+                *frame_idx = self.frames.len() - 1;
+
+                // If traced, record the frame and yield a span notification.
+                if let Some((callee_name, args)) = trace_data {
+                    self.traced_frames.push(*frame_idx);
+
+                    return Ok(Some(VmExecState::SpanNotify(
+                        SpanNotification::FunctionEnter {
+                            function_name: callee_name,
+                            frame_depth: *frame_idx,
+                            args,
+                        },
+                    )));
+                }
+
+                // SAFETY: See `load_function` doc comment.
+                *function = unsafe { self.load_function(*frame_idx)? };
+            }
+
+            FunctionKind::SysOp(_) => {
+                return Err(InternalError::TypeError {
+                    expected: FunctionType::Callable.into(),
+                    got: FunctionType::from(&callee.kind).into(),
+                }
+                .into());
+            }
+
+            FunctionKind::NativeUnresolved => {
+                // This should never happen - native functions should be resolved
+                // by attach_builtins() before the VM runs.
+                panic!(
+                    "Unresolved native function '{}' - did you forget to call attach_builtins()?",
+                    callee.name
+                );
+            }
+        }
+
+        Ok(None)
     }
 
     // Runs filters and returns remaining notifications for the watched node.
@@ -912,36 +1279,51 @@ impl BexVm {
         }
 
         if let Value::Object(new) = new_value {
-            // Track dependencies first (using closure to avoid borrow conflicts)
-            watch::track_watch_dependencies(&mut self.watch, Value::Object(new));
-            // Then link the edge
-            self.watch
-                .link_edge(watched_node, path, NodeId::HeapObject(new));
+            watch::track_watch_dependencies(&mut self.watch, watched_node, path, new);
         }
 
-        // Copy previous values.
-        let mut old_roots_copies = vec![];
+        // Deep-copy previous root values so the notification filter can diff
+        // old vs new. Two-pass because `baml_deep_copy` needs `&mut self`,
+        // which conflicts with borrowing `self.watch` for root_state.
+        let roots = self.watch.copy_roots_reaching(watched_node);
+        let mut old_roots_copies = Vec::with_capacity(roots.len());
 
-        for root in self.watch.copy_roots_reaching(watched_node) {
+        for &root in &roots {
             if let Some(state) = self.watch.root_state(root) {
                 let deep_copy = crate::native::baml_deep_copy(self, &[state.value])?;
                 old_roots_copies.push(deep_copy);
             }
         }
 
-        for (root, old_value) in self
-            .watch
-            .copy_roots_reaching(watched_node)
-            .iter()
-            .zip(old_roots_copies)
-        {
-            if let Some(state) = self.watch.root_state_mut(*root) {
+        for (&root, old_value) in roots.iter().zip(old_roots_copies) {
+            if let Some(state) = self.watch.root_state_mut(root) {
                 state.last_assigned = Some(old_value);
-                // current value has not really changes, top level object is the same.
             }
         }
 
         Ok(())
+    }
+
+    /// Load the function object for the given frame.
+    ///
+    /// # Safety
+    ///
+    /// Function objects are compiled ahead of time and live in the compile-time
+    /// heap, which is never garbage collected. The returned `'static` reference
+    /// is valid for the lifetime of the program.
+    ///
+    /// TODO: When we add lambdas that capture variables, their function objects
+    /// will be allocated at runtime on the TLAB and *can* be garbage collected.
+    /// At that point `'static` becomes unsound. Options:
+    ///   1. Pin closures in a non-GC'd region so they remain `'static`.
+    ///   2. Drop `'static` and re-deref after each GC safepoint (cheap re-deref,
+    ///      still no clone).
+    #[inline]
+    unsafe fn load_function(&self, frame_idx: usize) -> Result<&'static Function, VmError> {
+        let ptr = self.frames[frame_idx].function;
+        // SAFETY: See doc comment above.
+        let obj: &'static Object = unsafe { ptr.get() };
+        obj.as_function()
     }
 
     /// Main VM execution loop.
@@ -967,12 +1349,8 @@ impl BexVm {
         // pushing new frames during function calls.
         let mut frame_idx = self.frames.len() - 1;
 
-        // Clone the function object to avoid borrow checker issues with the new heap architecture.
-        // We clone because we need to access the function's bytecode throughout the loop
-        // while also mutating self (stack, frames, etc.). This is a trade-off for the
-        // unified heap architecture - the cost of cloning is acceptable for now.
-        let function_obj_idx = self.frames[frame_idx].function;
-        let mut function = self.get_object(function_obj_idx).as_function()?.clone();
+        // SAFETY: See `load_function` doc comment.
+        let mut function = unsafe { self.load_function(frame_idx)? };
 
         loop {
             // Current instruction pointer (read from frame).
@@ -982,371 +1360,305 @@ impl BexVm {
             // jump offsets later.
             self.frames[frame_idx].instruction_ptr += 1;
 
-            // NOTE: `core::intrinsics::unlikely` is only available on nightly.
-            // This branch is a big annoyance for small functions (like pushing the frame)
-            // and gets smaller the bigger the function due to branch (mis)prediction.
-            if instruction_ptr < 0 {
-                return Err(InternalError::NegativeInstructionPtr(instruction_ptr).into());
+            #[cfg(debug_assertions)]
+            #[allow(clippy::print_stderr)] // intentional debug output
+            if std::env::var("BEX_VM_DEBUG").is_ok() {
+                let stack = self
+                    .stack
+                    .iter()
+                    .map(crate::debug::display_value)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                let (instruction, metadata) = crate::debug::display_instruction(
+                    instruction_ptr,
+                    function,
+                    &self.globals,
+                    None,
+                    None,
+                );
+
+                eprintln!("[{stack}]");
+                eprintln!("{instruction} {metadata}");
             }
 
-            // Runtime debugging information.
-            // #[cfg(debug_assertions)]
-            // {
-            //     let stack = self
-            //         .stack
-            //         .iter()
-            //         .map(|v| crate::debug::display_value(v, &self.objects))
-            //         .collect::<Vec<_>>()
-            //         .join(", ");
+            let step_result: Result<Option<VmExecState>, VmError> = (|| {
+                match function.bytecode.instructions[instruction_ptr] {
+                    Instruction::NotifyBlock(block_index) => {
+                        // Get the notification from the function's storage
+                        let notification = &function.block_notifications[block_index];
 
-            //     eprintln!("[{stack}]");
+                        // Create a copy with the function name populated
+                        let full_notification = bytecode::BlockNotification {
+                            function_name: function.name.clone(),
+                            block_name: notification.block_name.clone(),
+                            level: notification.level,
+                            block_type: notification.block_type,
+                            is_enter: notification.is_enter,
+                        };
 
-            //     let (instruction, metadata) = crate::debug::display_instruction(
-            //         instruction_ptr,
-            //         function,
-            //         &self.stack,
-            //         &self.objects,
-            //         &self.globals,
-            //     );
+                        return Ok(Some(VmExecState::Notify(WatchNotification::Block(
+                            full_notification,
+                        ))));
+                    }
 
-            //     eprintln!("{instruction} {metadata}");
-            // }
+                    Instruction::VizEnter(index) | Instruction::VizExit(index) => {
+                        let instruction = &function.bytecode.instructions[instruction_ptr];
+                        let delta = match instruction {
+                            Instruction::VizEnter(_) => bytecode::VizExecDelta::Enter,
+                            Instruction::VizExit(_) => bytecode::VizExecDelta::Exit,
+                            _ => unreachable!("matched on viz instruction"),
+                        };
 
-            #[allow(clippy::cast_sign_loss)] // instruction_ptr is validated non-negative above
-            match function.bytecode.instructions[instruction_ptr as usize] {
-                Instruction::NotifyBlock(block_index) => {
-                    // Get the notification from the function's storage
-                    let notification = &function.block_notifications[block_index];
+                        let node = function.viz_nodes.get(index).ok_or({
+                            InternalError::ArrayIndexOutOfBounds {
+                                index,
+                                length: function.viz_nodes.len(),
+                            }
+                        })?;
 
-                    // Create a copy with the function name populated
-                    let full_notification = bytecode::BlockNotification {
-                        function_name: function.name.clone(),
-                        block_name: notification.block_name.clone(),
-                        level: notification.level,
-                        block_type: notification.block_type,
-                        is_enter: notification.is_enter,
-                    };
+                        let event = bytecode::VizExecEvent {
+                            delta,
+                            node_id: node.node_id,
+                            node_type: node.node_type,
+                            label: node.label.clone(),
+                            header_level: node.header_level,
+                        };
 
-                    return Ok(VmExecState::Notify(WatchNotification::Block(
-                        full_notification,
-                    )));
-                }
-                Instruction::VizEnter(index) | Instruction::VizExit(index) => {
-                    let instruction = &function.bytecode.instructions[instruction_ptr as usize];
-                    let delta = match instruction {
-                        Instruction::VizEnter(_) => bytecode::VizExecDelta::Enter,
-                        Instruction::VizExit(_) => bytecode::VizExecDelta::Exit,
-                        _ => unreachable!("matched on viz instruction"),
-                    };
+                        return Ok(Some(VmExecState::Notify(WatchNotification::Viz {
+                            function_name: function.name.clone(),
+                            event,
+                        })));
+                    }
 
-                    let node = function.viz_nodes.get(index).ok_or({
-                        InternalError::ArrayIndexOutOfBounds {
+                    Instruction::LoadConst(index) => {
+                        // Use pre-resolved constants (resolved at load time)
+                        let value = function.bytecode.resolved_constants[index];
+                        self.stack.push(value);
+                    }
+
+                    Instruction::LoadVar(index) => {
+                        let slot = Self::local_slot_stack_index(
+                            self.frames[frame_idx].locals_offset,
                             index,
-                            length: function.viz_nodes.len(),
-                        }
-                    })?;
+                        );
+                        let value = self.stack[slot];
+                        self.stack.push(value);
+                    }
 
-                    let event = bytecode::VizExecEvent {
-                        delta,
-                        node_id: node.node_id,
-                        node_type: node.node_type,
-                        label: node.label.clone(),
-                        header_level: node.header_level,
-                    };
+                    Instruction::StoreVar(index) => {
+                        // Absolute index of the local variable.
+                        let local_var_index = Self::local_slot_stack_index(
+                            self.frames[frame_idx].locals_offset,
+                            index,
+                        );
 
-                    return Ok(VmExecState::Notify(WatchNotification::Viz {
-                        function_name: function.name.clone(),
-                        event,
-                    }));
-                }
-                Instruction::LoadConst(index) => {
-                    // Use pre-resolved constants (resolved at load time)
-                    let value = function.bytecode.resolved_constants[index];
-                    self.stack.push(value);
-                }
+                        // New value.
+                        let value = self.stack.ensure_pop()?;
 
-                Instruction::LoadVar(index) => {
-                    let value = self.stack[self.frames[frame_idx].locals_offset + index];
-                    self.stack.push(value);
-                }
+                        // Old value being replaced.
+                        let old_value = std::mem::replace(&mut self.stack[local_var_index], value);
 
-                Instruction::StoreVar(index) => {
-                    // Absolute index of the local variable.
-                    let local_var_index = self.frames[frame_idx].locals_offset + index;
+                        // If this local is watched, update the watch graph.
+                        //
+                        // A watched local is a root in the watch graph. When
+                        // reassigned (e.g. `v = new_val`), three things happen:
+                        //
+                        // 1. `update_watched_node` handles edge topology: unlinks
+                        //    the old binding (so mutations to the old object no
+                        //    longer trigger notifications), links the new one, and
+                        //    deep-copies the previous root state into
+                        //    `last_assigned` so the notification filter can diff
+                        //    old vs new.
+                        //
+                        // 2. `state.value` is updated to the new value. This is
+                        //    specific to `StoreVar` — for field/array/map stores
+                        //    the root's top-level binding hasn't changed, but here
+                        //    the root itself is being rebound.
+                        //
+                        // 3. `process_notifications` walks all roots reaching this
+                        //    node (just itself, since it IS a root) and applies
+                        //    the watch filter to decide whether to notify.
+                        if self.watched_vars.contains_key(&local_var_index) {
+                            let watched_node = NodeId::LocalVar(local_var_index);
 
-                    // New value.
-                    let value = self.stack.ensure_pop()?;
-
-                    // Old value being replaced.
-                    let old_value = std::mem::replace(&mut self.stack[local_var_index], value);
-
-                    // Check if this binding is emittable.
-                    if self.watched_vars.contains_key(&local_var_index) {
-                        // Node ID of the local variable in the emit graph.
-                        let watched_node = NodeId::LocalVar(local_var_index);
-
-                        // If we had a previous binding to an object, unlink it
-                        // so it doesn't emit anymore.
-                        if let Value::Object(old_node) = old_value {
-                            self.watch.unlink_edge(
+                            self.update_watched_node(
                                 watched_node,
                                 watch::Path::Binding,
-                                NodeId::HeapObject(old_node),
-                            );
+                                old_value,
+                                value,
+                            )?;
+
+                            if let Some(state) = self.watch.root_state_mut(watched_node) {
+                                state.value = value;
+                            }
+
+                            let notifications = self.process_notifications(watched_node)?;
+
+                            if !notifications.is_empty() {
+                                return Ok(Some(VmExecState::Notify(
+                                    WatchNotification::Variables(notifications),
+                                )));
+                            }
                         }
+                    }
 
-                        // If we have a new binding, link it so it emits.
-                        if let Value::Object(new_node) = value {
-                            // Track dependencies first (using closure to avoid borrow conflicts)
-                            watch::track_watch_dependencies(&mut self.watch, value);
-                            // Then link the edge
-                            self.watch.link_edge(
-                                watched_node,
-                                watch::Path::Binding,
-                                NodeId::HeapObject(new_node),
-                            );
-                        }
+                    Instruction::LoadGlobal(index) => {
+                        let value = &self.globals[index];
+                        self.stack.push(*value);
+                    }
 
-                        let old_value_deep_copy =
-                            crate::native::baml_deep_copy(self, &[old_value])?;
+                    Instruction::StoreGlobal(index) => {
+                        // Consume the value. Read impl of Instruction::StoreVar.
+                        let value = self.stack.ensure_pop()?;
 
-                        if let Some(state) = self.watch.root_state_mut(watched_node) {
-                            state.last_assigned = Some(old_value_deep_copy);
-                            state.value = value;
+                        self.globals[index] = value;
+                    }
+
+                    Instruction::LoadField(index) => {
+                        let top = self.stack.ensure_pop()?;
+
+                        let reference = self.as_object_ptr(&top, ObjectType::Instance)?;
+
+                        // Extract the field value before pushing to stack
+                        let field_value = {
+                            let Object::Instance(instance) = self.get_object(reference) else {
+                                return Err(InternalError::TypeError {
+                                    expected: ObjectType::Instance.into(),
+                                    got: ObjectType::of(self.get_object(reference)).into(),
+                                }
+                                .into());
+                            };
+                            instance.fields[index]
+                        };
+
+                        // Push the value on top of the stack.
+                        self.stack.push(field_value);
+                    }
+
+                    Instruction::StoreField(index) => {
+                        // Consume the new value to be set from the stack.
+                        let new_value = self.stack.ensure_pop()?;
+
+                        // Consume the instance value from the stack.
+                        let instance_value = self.stack.ensure_pop()?;
+                        let instance_index =
+                            self.as_object_ptr(&instance_value, ObjectType::Instance)?;
+
+                        // Read old value (and typecheck).
+                        let old_value = match self.get_object(instance_index) {
+                            Object::Instance(instance) => instance.fields[index],
+
+                            other => {
+                                return Err(VmError::from(InternalError::TypeError {
+                                    expected: ObjectType::Instance.into(),
+                                    got: ObjectType::of(other).into(),
+                                }));
+                            }
+                        };
+
+                        // Change graph topology.
+                        let watched_node = NodeId::HeapObject(instance_index);
+
+                        self.update_watched_node(
+                            watched_node,
+                            watch::Path::InstanceField(index),
+                            old_value,
+                            new_value,
+                        )?;
+
+                        // Set the new value.
+                        if let Object::Instance(instance) = self.get_object_mut(instance_index) {
+                            instance.fields[index] = new_value;
                         }
 
                         let notifications = self.process_notifications(watched_node)?;
 
-                        // borrow checker - update frame index and function.
-                        function = self
-                            .get_object(self.frames[frame_idx].function)
-                            .as_function()?
-                            .clone();
-
                         if !notifications.is_empty() {
-                            return Ok(VmExecState::Notify(WatchNotification::Variables(
+                            return Ok(Some(VmExecState::Notify(WatchNotification::Variables(
                                 notifications,
-                            )));
-                        }
-                    }
-                }
-
-                Instruction::LoadGlobal(index) => {
-                    let value = &self.globals[index];
-                    self.stack.push(*value);
-                }
-
-                Instruction::StoreGlobal(index) => {
-                    // Consume the value. Read impl of Instruction::StoreVar.
-                    let value = self.stack.ensure_pop()?;
-
-                    self.globals[index] = value;
-                }
-
-                Instruction::LoadField(index) => {
-                    let top = self.stack.ensure_pop()?;
-
-                    let reference = self.as_object_ptr(&top, ObjectType::Instance)?;
-
-                    // Extract the field value before pushing to stack
-                    let field_value = {
-                        let Object::Instance(instance) = self.get_object(reference) else {
-                            return Err(InternalError::TypeError {
-                                expected: ObjectType::Instance.into(),
-                                got: ObjectType::of(self.get_object(reference)).into(),
-                            }
-                            .into());
-                        };
-                        instance.fields[index]
-                    };
-
-                    // Push the value on top of the stack.
-                    self.stack.push(field_value);
-                }
-
-                Instruction::StoreField(index) => {
-                    // Consume the new value to be set from the stack.
-                    let new_value = self.stack.ensure_pop()?;
-
-                    // Consume the instance value from the stack.
-                    let instance_value = self.stack.ensure_pop()?;
-                    let instance_index =
-                        self.as_object_ptr(&instance_value, ObjectType::Instance)?;
-
-                    // Read old value (and typecheck).
-                    let old_value = match self.get_object(instance_index) {
-                        Object::Instance(instance) => instance.fields[index],
-
-                        other => {
-                            return Err(VmError::from(InternalError::TypeError {
-                                expected: ObjectType::Instance.into(),
-                                got: ObjectType::of(other).into(),
-                            }));
-                        }
-                    };
-
-                    // Change graph topology.
-                    let watched_node = NodeId::HeapObject(instance_index);
-
-                    self.update_watched_node(
-                        watched_node,
-                        watch::Path::InstanceField(index),
-                        old_value,
-                        new_value,
-                    )?;
-
-                    // Set the new value.
-                    if let Object::Instance(instance) = self.get_object_mut(instance_index) {
-                        instance.fields[index] = new_value;
-                    }
-
-                    let notifications = self.process_notifications(watched_node)?;
-
-                    // Borrow checker - update function.
-                    function = self
-                        .get_object(self.frames[frame_idx].function)
-                        .as_function()?
-                        .clone();
-
-                    if !notifications.is_empty() {
-                        return Ok(VmExecState::Notify(WatchNotification::Variables(
-                            notifications,
-                        )));
-                    }
-                }
-
-                Instruction::Pop(n) => {
-                    let drain_start = self.stack.len() - n;
-                    let drain_range = StackIndex::from_raw(drain_start)..;
-
-                    // Check if any of the popped variables are emittable and
-                    // unregister them
-                    for i in drain_start..self.stack.len() {
-                        let index = StackIndex::from_raw(i);
-                        if self.watched_vars.remove(&index).is_some() {
-                            let var_node = NodeId::LocalVar(index);
-
-                            // Unregister the root since the variable is going
-                            // out of scope.
-                            self.watch.unregister_root(var_node);
-
-                            // Also unlink any edge from this variable.
-                            if let Value::Object(obj) = self.stack[index] {
-                                self.watch.unlink_edge(
-                                    var_node,
-                                    watch::Path::Binding,
-                                    NodeId::HeapObject(obj),
-                                );
-                            }
+                            ))));
                         }
                     }
 
-                    self.stack.drain(drain_range);
-                }
-
-                Instruction::Copy(offset) => {
-                    let index = self.stack.ensure_slot_from_top(offset)?;
-                    let value = self.stack[index];
-                    self.stack.push(value);
-                }
-
-                Instruction::PopReplace(n) => {
-                    let value = self.stack.ensure_pop()?;
-
-                    // Pop the last `n` locals from the stack.
-                    let drain_start = self.stack.len() - n;
-
-                    // Clean up any emittable variables in the range being
-                    // popped.
-                    for i in drain_start..self.stack.len() {
-                        let index = StackIndex::from_raw(i);
-                        if self.watched_vars.remove(&index).is_some() {
-                            let var_node = NodeId::LocalVar(index);
-
-                            // Unregister the root since the variable is going out of scope
-                            self.watch.unregister_root(var_node);
-
-                            // Also unlink any edge from this variable
-                            if let Value::Object(obj) = self.stack[index] {
-                                self.watch.unlink_edge(
-                                    var_node,
-                                    watch::Path::Binding,
-                                    NodeId::HeapObject(obj),
-                                );
-                            }
-                        }
+                    Instruction::Pop(n) => {
+                        let drain_start = self.stack.len() - n;
+                        let drain_range = StackIndex::from_raw(drain_start)..;
+                        self.stack.drain(drain_range);
                     }
 
-                    let drain_range = StackIndex::from_raw(drain_start)..;
-                    self.stack.drain(drain_range);
-
-                    // Push the value back on top of the stack.
-                    self.stack.push(value);
-                }
-
-                Instruction::Jump(offset) => {
-                    // Reassign the frame's IP to the new instruction.
-                    // Remember that offset can be negative here, so even though
-                    // we're adding it can still jump backwards.
-                    self.frames[frame_idx].instruction_ptr = instruction_ptr + offset;
-                }
-
-                Instruction::PopJumpIfFalse(offset) => {
-                    // Pop the condition from the stack (don't leave it there).
-                    let condition = self.stack.ensure_pop()?;
-
-                    match condition {
-                        // Reassign only if the condition is false.
-                        Value::Bool(value) => {
-                            if !value {
-                                self.frames[frame_idx].instruction_ptr = instruction_ptr + offset;
-                            }
-                        }
-
-                        // Type error, we don't have "falsey" values in the language
-                        // so we should always check booleans.
-                        other => {
-                            return Err(VmError::from(InternalError::TypeError {
-                                expected: Type::Bool,
-                                got: self.type_of(&other),
-                            }));
-                        }
+                    Instruction::Copy(offset) => {
+                        let index = self.stack.ensure_slot_from_top(offset)?;
+                        let value = self.stack[index];
+                        self.stack.push(value);
                     }
-                }
 
-                Instruction::BinOp(op) => {
-                    let right = self.stack.ensure_pop()?;
-                    let left = self.stack.ensure_pop()?;
+                    Instruction::Jump(offset) => {
+                        // Offset can be negative (backward jumps for loops).
+                        // NOTE: checked_add_signed has a branch on overflow. If this
+                        // becomes a bottleneck on hot loops, it can be replaced with
+                        // wrapping_add_signed — the array bounds check on the next
+                        // iteration will catch invalid pointers anyway.
+                        self.frames[frame_idx].instruction_ptr = instruction_ptr
+                            .checked_add_signed(offset)
+                            .ok_or(InternalError::InvalidJump)?;
+                    }
 
-                    let result = match (left, right) {
-                        (Value::Int(left), Value::Int(right)) => Value::Int(match op {
-                            BinOp::Div if right == 0 => {
-                                return Err(RuntimeError::DivisionByZero {
-                                    left: Value::Int(left),
-                                    right: Value::Int(right),
+                    Instruction::PopJumpIfFalse(offset) => {
+                        // Pop the condition from the stack (don't leave it there).
+                        let condition = self.stack.ensure_pop()?;
+
+                        match condition {
+                            // Reassign only if the condition is false.
+                            Value::Bool(value) => {
+                                if !value {
+                                    self.frames[frame_idx].instruction_ptr = instruction_ptr
+                                        .checked_add_signed(offset)
+                                        .ok_or(InternalError::InvalidJump)?;
                                 }
-                                .into());
                             }
 
-                            BinOp::Add => left + right,
-                            BinOp::Sub => left - right,
-                            BinOp::Mul => left * right,
-                            BinOp::Div => left / right,
-                            BinOp::Mod => left % right,
+                            // Type error, we don't have "falsey" values in the language
+                            // so we should always check booleans.
+                            other => {
+                                return Err(VmError::from(InternalError::TypeError {
+                                    expected: Type::Bool,
+                                    got: self.type_of(&other),
+                                }));
+                            }
+                        }
+                    }
 
-                            BinOp::BitAnd => left & right,
-                            BinOp::BitOr => left | right,
-                            BinOp::BitXor => left ^ right,
-                            BinOp::Shl => left << right,
-                            BinOp::Shr => left >> right,
-                        }),
+                    Instruction::PushUnwind {
+                        handler,
+                        error_slot,
+                    } => {
+                        self.push_unwind_handler(frame_idx, instruction_ptr, handler, error_slot)?;
+                    }
 
-                        (Value::Float(left), Value::Float(right)) => {
-                            Value::Float(match op {
-                                BinOp::Div if right == 0.0 => {
+                    Instruction::PopUnwind => {
+                        self.pop_unwind_handler(frame_idx);
+                    }
+
+                    Instruction::Throw => {
+                        let value = self.stack.ensure_pop()?;
+                        self.try_unwind_exception(
+                            &mut frame_idx,
+                            &mut function,
+                            VmException::Thrown(value),
+                        )?;
+                    }
+
+                    Instruction::BinOp(op) => {
+                        let right = self.stack.ensure_pop()?;
+                        let left = self.stack.ensure_pop()?;
+
+                        let result = match (left, right) {
+                            (Value::Int(left), Value::Int(right)) => Value::Int(match op {
+                                BinOp::Div if right == 0 => {
                                     return Err(RuntimeError::DivisionByZero {
-                                        left: Value::Float(left),
-                                        right: Value::Float(right),
+                                        left: Value::Int(left),
+                                        right: Value::Int(right),
                                     }
                                     .into());
                                 }
@@ -1357,342 +1669,390 @@ impl BexVm {
                                 BinOp::Div => left / right,
                                 BinOp::Mod => left % right,
 
-                                // Bitwise ops not applicable to floats.
-                                BinOp::BitAnd
-                                | BinOp::BitOr
-                                | BinOp::BitXor
-                                | BinOp::Shl
-                                | BinOp::Shr => {
-                                    return Err(VmError::from(InternalError::CannotApplyBinOp {
-                                        left: Type::Float,
-                                        right: Type::Float,
-                                        op,
-                                    }));
-                                }
-                            })
-                        }
+                                BinOp::BitAnd => left & right,
+                                BinOp::BitOr => left | right,
+                                BinOp::BitXor => left ^ right,
+                                BinOp::Shl => left << right,
+                                BinOp::Shr => left >> right,
+                            }),
 
-                        (Value::Object(_), Value::Object(_)) if op == BinOp::Add => {
-                            let left = self.as_string(&left)?;
-                            let right = self.as_string(&right)?;
+                            (Value::Float(left), Value::Float(right)) => {
+                                Value::Float(match op {
+                                    BinOp::Div if right == 0.0 => {
+                                        return Err(RuntimeError::DivisionByZero {
+                                            left: Value::Float(left),
+                                            right: Value::Float(right),
+                                        }
+                                        .into());
+                                    }
 
-                            let mut concat = left.clone();
-                            concat.push_str(right);
+                                    BinOp::Add => left + right,
+                                    BinOp::Sub => left - right,
+                                    BinOp::Mul => left * right,
+                                    BinOp::Div => left / right,
+                                    BinOp::Mod => left % right,
 
-                            let concat_str_object = self.alloc_string(concat);
-
-                            // Borrow check.
-                            function = self
-                                .get_object(self.frames[frame_idx].function)
-                                .as_function()?
-                                .clone();
-
-                            concat_str_object
-                        }
-
-                        _ => {
-                            return Err(VmError::from(InternalError::CannotApplyBinOp {
-                                left: self.type_of(&left),
-                                right: self.type_of(&right),
-                                op,
-                            }));
-                        }
-                    };
-
-                    self.stack.push(result);
-                }
-
-                Instruction::CmpOp(op) => {
-                    let right = self.stack.ensure_pop()?;
-                    let left = self.stack.ensure_pop()?;
-
-                    let result = match (left, right) {
-                        (Value::Int(left), Value::Int(right)) => Value::Bool(match op {
-                            CmpOp::Eq => left == right,
-                            CmpOp::NotEq => left != right,
-                            CmpOp::Lt => left < right,
-                            CmpOp::LtEq => left <= right,
-                            CmpOp::Gt => left > right,
-                            CmpOp::GtEq => left >= right,
-
-                            CmpOp::InstanceOf => {
-                                return Err(InternalError::CannotApplyCmpOp {
-                                    left: Type::Int,
-                                    right: Type::Int,
-                                    op,
-                                }
-                                .into());
+                                    // Bitwise ops not applicable to floats.
+                                    BinOp::BitAnd
+                                    | BinOp::BitOr
+                                    | BinOp::BitXor
+                                    | BinOp::Shl
+                                    | BinOp::Shr => {
+                                        return Err(VmError::from(
+                                            InternalError::CannotApplyBinOp {
+                                                left: Type::Float,
+                                                right: Type::Float,
+                                                op,
+                                            },
+                                        ));
+                                    }
+                                })
                             }
-                        }),
 
-                        #[allow(clippy::float_cmp)]
-                        // intentional exact comparison for equality operators
-                        (Value::Float(left), Value::Float(right)) => Value::Bool(match op {
-                            CmpOp::Eq => left == right,
-                            CmpOp::NotEq => left != right,
-                            CmpOp::Lt => left < right,
-                            CmpOp::LtEq => left <= right,
-                            CmpOp::Gt => left > right,
-                            CmpOp::GtEq => left >= right,
+                            // Mixed int/float: promote int to float.
+                            #[allow(clippy::cast_precision_loss)]
+                            (Value::Int(left), Value::Float(right)) => {
+                                let left = left as f64;
+                                Value::Float(match op {
+                                    BinOp::Div if right == 0.0 => {
+                                        return Err(RuntimeError::DivisionByZero {
+                                            left: Value::Float(left),
+                                            right: Value::Float(right),
+                                        }
+                                        .into());
+                                    }
 
-                            CmpOp::InstanceOf => {
-                                return Err(InternalError::CannotApplyCmpOp {
-                                    left: Type::Float,
-                                    right: Type::Float,
-                                    op,
-                                }
-                                .into());
+                                    BinOp::Add => left + right,
+                                    BinOp::Sub => left - right,
+                                    BinOp::Mul => left * right,
+                                    BinOp::Div => left / right,
+                                    BinOp::Mod => left % right,
+
+                                    BinOp::BitAnd
+                                    | BinOp::BitOr
+                                    | BinOp::BitXor
+                                    | BinOp::Shl
+                                    | BinOp::Shr => {
+                                        return Err(VmError::from(
+                                            InternalError::CannotApplyBinOp {
+                                                left: Type::Int,
+                                                right: Type::Float,
+                                                op,
+                                            },
+                                        ));
+                                    }
+                                })
                             }
-                        }),
 
-                        (Value::Object(left_index), Value::Object(right_index))
-                            if matches!(self.get_object(left_index), Object::String(_))
-                                && matches!(self.get_object(right_index), Object::String(_)) =>
-                        {
-                            let left = self.as_string(&left)?;
-                            let right = self.as_string(&right)?;
+                            #[allow(clippy::cast_precision_loss)]
+                            (Value::Float(left), Value::Int(right)) => {
+                                let right = right as f64;
+                                Value::Float(match op {
+                                    BinOp::Div if right == 0.0 => {
+                                        return Err(RuntimeError::DivisionByZero {
+                                            left: Value::Float(left),
+                                            right: Value::Float(right),
+                                        }
+                                        .into());
+                                    }
 
-                            Value::Bool(match op {
+                                    BinOp::Add => left + right,
+                                    BinOp::Sub => left - right,
+                                    BinOp::Mul => left * right,
+                                    BinOp::Div => left / right,
+                                    BinOp::Mod => left % right,
+
+                                    BinOp::BitAnd
+                                    | BinOp::BitOr
+                                    | BinOp::BitXor
+                                    | BinOp::Shl
+                                    | BinOp::Shr => {
+                                        return Err(VmError::from(
+                                            InternalError::CannotApplyBinOp {
+                                                left: Type::Float,
+                                                right: Type::Int,
+                                                op,
+                                            },
+                                        ));
+                                    }
+                                })
+                            }
+
+                            (Value::Object(_), Value::Object(_)) if op == BinOp::Add => {
+                                let left = self.as_string(&left)?;
+                                let right = self.as_string(&right)?;
+
+                                let mut concat = left.clone();
+                                concat.push_str(right);
+
+                                self.alloc_string(concat)
+                            }
+
+                            _ => {
+                                return Err(VmError::from(InternalError::CannotApplyBinOp {
+                                    left: self.type_of(&left),
+                                    right: self.type_of(&right),
+                                    op,
+                                }));
+                            }
+                        };
+
+                        self.stack.push(result);
+                    }
+
+                    Instruction::CmpOp(op) => {
+                        let right = self.stack.ensure_pop()?;
+                        let left = self.stack.ensure_pop()?;
+
+                        let result = match (left, right) {
+                            (Value::Int(left), Value::Int(right)) => Value::Bool(match op {
                                 CmpOp::Eq => left == right,
                                 CmpOp::NotEq => left != right,
                                 CmpOp::Lt => left < right,
                                 CmpOp::LtEq => left <= right,
                                 CmpOp::Gt => left > right,
                                 CmpOp::GtEq => left >= right,
+
                                 CmpOp::InstanceOf => {
                                     return Err(InternalError::CannotApplyCmpOp {
-                                        left: Type::Object(ObjectType::String),
-                                        right: Type::Object(ObjectType::String),
+                                        left: Type::Int,
+                                        right: Type::Int,
                                         op,
                                     }
                                     .into());
                                 }
-                            })
-                        }
+                            }),
 
-                        // Variant comparison: compare by enum type and variant index
-                        (Value::Object(left_index), Value::Object(right_index))
-                            if matches!(self.get_object(left_index), Object::Variant(_))
-                                && matches!(self.get_object(right_index), Object::Variant(_)) =>
-                        {
-                            let Object::Variant(left_var) = self.get_object(left_index) else {
-                                unreachable!()
-                            };
-                            let Object::Variant(right_var) = self.get_object(right_index) else {
-                                unreachable!()
-                            };
+                            #[allow(clippy::float_cmp)]
+                            // intentional exact comparison for equality operators
+                            (Value::Float(left), Value::Float(right)) => Value::Bool(match op {
+                                CmpOp::Eq => left == right,
+                                CmpOp::NotEq => left != right,
+                                CmpOp::Lt => left < right,
+                                CmpOp::LtEq => left <= right,
+                                CmpOp::Gt => left > right,
+                                CmpOp::GtEq => left >= right,
 
-                            Value::Bool(match op {
-                                CmpOp::Eq => {
-                                    left_var.enm == right_var.enm
-                                        && left_var.index == right_var.index
-                                }
-                                CmpOp::NotEq => {
-                                    left_var.enm != right_var.enm
-                                        || left_var.index != right_var.index
-                                }
-                                _ => {
+                                CmpOp::InstanceOf => {
                                     return Err(InternalError::CannotApplyCmpOp {
-                                        left: Type::Object(ObjectType::Variant),
-                                        right: Type::Object(ObjectType::Variant),
+                                        left: Type::Float,
+                                        right: Type::Float,
                                         op,
                                     }
                                     .into());
                                 }
-                            })
-                        }
+                            }),
 
-                        _ => Value::Bool(match op {
-                            CmpOp::Eq => left == right,
-                            CmpOp::NotEq => left != right,
+                            // Mixed int/float comparisons: promote int to float.
+                            #[allow(clippy::cast_precision_loss, clippy::float_cmp)]
+                            (Value::Int(left), Value::Float(right)) => {
+                                let left = left as f64;
+                                Value::Bool(match op {
+                                    CmpOp::Eq => left == right,
+                                    CmpOp::NotEq => left != right,
+                                    CmpOp::Lt => left < right,
+                                    CmpOp::LtEq => left <= right,
+                                    CmpOp::Gt => left > right,
+                                    CmpOp::GtEq => left >= right,
 
-                            CmpOp::InstanceOf => {
-                                let left = self.as_object_ptr(&left, ObjectType::Instance)?;
-
-                                let Object::Instance(instance) = self.get_object(left) else {
-                                    return Err(InternalError::TypeError {
-                                        expected: ObjectType::Instance.into(),
-                                        got: ObjectType::of(self.get_object(left)).into(),
+                                    CmpOp::InstanceOf => {
+                                        return Err(InternalError::CannotApplyCmpOp {
+                                            left: Type::Int,
+                                            right: Type::Float,
+                                            op,
+                                        }
+                                        .into());
                                     }
-                                    .into());
+                                })
+                            }
+
+                            #[allow(clippy::cast_precision_loss, clippy::float_cmp)]
+                            (Value::Float(left), Value::Int(right)) => {
+                                let right = right as f64;
+                                Value::Bool(match op {
+                                    CmpOp::Eq => left == right,
+                                    CmpOp::NotEq => left != right,
+                                    CmpOp::Lt => left < right,
+                                    CmpOp::LtEq => left <= right,
+                                    CmpOp::Gt => left > right,
+                                    CmpOp::GtEq => left >= right,
+
+                                    CmpOp::InstanceOf => {
+                                        return Err(InternalError::CannotApplyCmpOp {
+                                            left: Type::Float,
+                                            right: Type::Int,
+                                            op,
+                                        }
+                                        .into());
+                                    }
+                                })
+                            }
+
+                            (Value::Object(left_index), Value::Object(right_index))
+                                if matches!(self.get_object(left_index), Object::String(_))
+                                    && matches!(
+                                        self.get_object(right_index),
+                                        Object::String(_)
+                                    ) =>
+                            {
+                                let left = self.as_string(&left)?;
+                                let right = self.as_string(&right)?;
+
+                                Value::Bool(match op {
+                                    CmpOp::Eq => left == right,
+                                    CmpOp::NotEq => left != right,
+                                    CmpOp::Lt => left < right,
+                                    CmpOp::LtEq => left <= right,
+                                    CmpOp::Gt => left > right,
+                                    CmpOp::GtEq => left >= right,
+                                    CmpOp::InstanceOf => {
+                                        return Err(InternalError::CannotApplyCmpOp {
+                                            left: Type::Object(ObjectType::String),
+                                            right: Type::Object(ObjectType::String),
+                                            op,
+                                        }
+                                        .into());
+                                    }
+                                })
+                            }
+
+                            // Variant comparison: compare by enum type and variant index
+                            (Value::Object(left_index), Value::Object(right_index))
+                                if matches!(self.get_object(left_index), Object::Variant(_))
+                                    && matches!(
+                                        self.get_object(right_index),
+                                        Object::Variant(_)
+                                    ) =>
+                            {
+                                let Object::Variant(left_var) = self.get_object(left_index) else {
+                                    unreachable!()
+                                };
+                                let Object::Variant(right_var) = self.get_object(right_index)
+                                else {
+                                    unreachable!()
                                 };
 
-                                let right = self.as_object_ptr(&right, ObjectType::Class)?;
-
-                                instance.class == right
+                                Value::Bool(match op {
+                                    CmpOp::Eq => {
+                                        left_var.enm == right_var.enm
+                                            && left_var.index == right_var.index
+                                    }
+                                    CmpOp::NotEq => {
+                                        left_var.enm != right_var.enm
+                                            || left_var.index != right_var.index
+                                    }
+                                    _ => {
+                                        return Err(InternalError::CannotApplyCmpOp {
+                                            left: Type::Object(ObjectType::Variant),
+                                            right: Type::Object(ObjectType::Variant),
+                                            op,
+                                        }
+                                        .into());
+                                    }
+                                })
                             }
 
-                            _ => {
-                                return Err(VmError::from(InternalError::CannotApplyCmpOp {
-                                    left: self.type_of(&left),
-                                    right: self.type_of(&right),
-                                    op,
-                                }));
-                            }
-                        }),
-                    };
+                            _ => Value::Bool(match op {
+                                CmpOp::Eq => left == right,
+                                CmpOp::NotEq => left != right,
 
-                    self.stack.push(result);
-                }
+                                CmpOp::InstanceOf => {
+                                    let left = self.as_object_ptr(&left, ObjectType::Instance)?;
 
-                Instruction::UnaryOp(op) => {
-                    let value = self.stack.ensure_pop()?;
+                                    let Object::Instance(instance) = self.get_object(left) else {
+                                        return Err(InternalError::TypeError {
+                                            expected: ObjectType::Instance.into(),
+                                            got: ObjectType::of(self.get_object(left)).into(),
+                                        }
+                                        .into());
+                                    };
 
-                    let result = match (op, value) {
-                        (UnaryOp::Not, Value::Bool(value)) => Value::Bool(!value),
-                        (UnaryOp::Neg, Value::Int(value)) => Value::Int(-value),
-                        (UnaryOp::Neg, Value::Float(value)) => Value::Float(-value),
-                        _ => {
-                            return Err(VmError::from(InternalError::CannotApplyUnaryOp {
-                                op,
-                                value: self.type_of(&value),
-                            }));
-                        }
-                    };
+                                    let right = self.as_object_ptr(&right, ObjectType::Class)?;
 
-                    self.stack.push(result);
-                }
+                                    instance.class == right
+                                }
 
-                Instruction::AllocArray(size) => {
-                    // Pop all the elements from the stack and create an array.
-                    let drain_range = StackIndex::from_raw(self.stack.len() - size)..;
-                    let array = self.stack.drain(drain_range).collect();
-
-                    // Allocate it on the heap.
-                    let array_index = self.tlab.alloc(Object::Array(array));
-
-                    // Push the array object on top of the stack.
-                    self.stack.push(Value::Object(array_index));
-
-                    // objects.push() above might've reallocated the vector so
-                    // borrow checker complains. Restore the reference.
-                    function = self
-                        .get_object(self.frames[frame_idx].function)
-                        .as_function()?
-                        .clone();
-                }
-
-                Instruction::LoadArrayElement => {
-                    // Stack should contain [array, index]
-                    // Pop the index first, then the array
-                    let index_value = self.stack.ensure_pop()?;
-                    let array_value = self.stack.ensure_pop()?;
-
-                    let array_obj_index = self.as_object_ptr(&array_value, ObjectType::Array)?;
-
-                    // Get the index
-                    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-                    // bounds checked below
-                    let index = match index_value {
-                        Value::Int(i) => {
-                            if i < 0 {
-                                return Err(InternalError::ArrayIndexIsNegative(i).into());
-                            }
-                            i as usize
-                        }
-                        _ => {
-                            return Err(InternalError::TypeError {
-                                expected: Type::Int,
-                                got: self.type_of(&index_value),
-                            }
-                            .into());
-                        }
-                    };
-
-                    // Extract the array element before pushing to stack
-                    let element = {
-                        let Object::Array(array) = self.get_object(array_obj_index) else {
-                            return Err(VmError::from(InternalError::TypeError {
-                                expected: ObjectType::Array.into(),
-                                got: ObjectType::of(self.get_object(array_obj_index)).into(),
-                            }));
+                                _ => {
+                                    return Err(VmError::from(InternalError::CannotApplyCmpOp {
+                                        left: self.type_of(&left),
+                                        right: self.type_of(&right),
+                                        op,
+                                    }));
+                                }
+                            }),
                         };
 
-                        // Check bounds
-                        if index >= array.len() {
-                            return Err(VmError::from(InternalError::ArrayIndexOutOfBounds {
-                                index,
-                                length: array.len(),
-                            }));
-                        }
+                        self.stack.push(result);
+                    }
 
-                        array[index]
-                    };
+                    Instruction::UnaryOp(op) => {
+                        let value = self.stack.ensure_pop()?;
 
-                    // Push the element onto the stack
-                    self.stack.push(element);
-                }
-
-                Instruction::LoadMapElement => {
-                    // LoadMapElement Instruction
-                    //
-                    // Stack before: [map, key]
-                    // Stack after: [value]
-                    //
-                    // Interpretation steps:
-                    // 1. Pop key from stack (top element)
-                    // 2. Pop map reference from stack (bottom element)
-                    // 3. Validate that the popped map reference is indeed a map object
-                    // 4. Get the key as a string from the objects pool (maps use string keys)
-                    //    - Validate key_value is an object reference to a String
-                    //    - Get the string reference from the objects pool
-                    // 5. Look up the value at map[key]
-                    // 6. Handle the case where key doesn't exist in the map
-                    //    - Return a runtime error NoSuchKeyInMap if key not found
-                    // 7. Push the found value onto the stack
-
-                    let key_value = self.stack.ensure_pop()?;
-                    let map_value = self.stack.ensure_pop()?;
-
-                    let map_index = self.as_object_ptr(&map_value, ObjectType::Map)?;
-
-                    let Object::Map(map) = self.get_object(map_index) else {
-                        return Err(VmError::from(InternalError::TypeError {
-                            expected: ObjectType::Map.into(),
-                            got: ObjectType::of(self.get_object(map_index)).into(),
-                        }));
-                    };
-
-                    // Get the string key from the objects pool
-                    let key_index = self.as_object_ptr(&key_value, ObjectType::String)?;
-                    let key = self.get_object(key_index).as_string()?;
-
-                    // Look up the value in the map
-                    let value = map.get(key).copied().ok_or(RuntimeError::NoSuchKeyInMap)?;
-
-                    // Push the value onto the stack
-                    self.stack.push(value);
-                }
-
-                Instruction::StoreArrayElement => {
-                    // Instruction args.
-                    let new_value = self.stack.ensure_pop()?;
-                    let index_value = self.stack.ensure_pop()?;
-                    let array_value = self.stack.ensure_pop()?;
-                    let array_object_index = self.as_object_ptr(&array_value, ObjectType::Array)?;
-
-                    // Verify index.
-                    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-                    // bounds checked below
-                    let index = match index_value {
-                        Value::Int(i) => {
-                            if i < 0 {
-                                return Err(InternalError::ArrayIndexIsNegative(i).into());
+                        let result = match (op, value) {
+                            (UnaryOp::Not, Value::Bool(value)) => Value::Bool(!value),
+                            (UnaryOp::Neg, Value::Int(value)) => Value::Int(-value),
+                            (UnaryOp::Neg, Value::Float(value)) => Value::Float(-value),
+                            _ => {
+                                return Err(VmError::from(InternalError::CannotApplyUnaryOp {
+                                    op,
+                                    value: self.type_of(&value),
+                                }));
                             }
-                            i as usize
-                        }
-                        other => {
-                            return Err(VmError::from(InternalError::TypeError {
-                                expected: Type::Int,
-                                got: self.type_of(&other),
-                            }));
-                        }
-                    };
+                        };
 
-                    // Read old value (and typecheck).
-                    let old_value = match self.get_object(array_object_index) {
-                        Object::Array(array) => {
-                            // Check bounds.
+                        self.stack.push(result);
+                    }
+
+                    Instruction::AllocArray(size) => {
+                        // Pop all the elements from the stack and create an array.
+                        let drain_range = StackIndex::from_raw(self.stack.len() - size)..;
+                        let array = self.stack.drain(drain_range).collect();
+
+                        // Allocate it on the heap.
+                        let array_index = self.tlab.alloc(Object::Array(array));
+
+                        // Push the array object on top of the stack.
+                        self.stack.push(Value::Object(array_index));
+                    }
+
+                    Instruction::LoadArrayElement => {
+                        // Stack should contain [array, index]
+                        // Pop the index first, then the array
+                        let index_value = self.stack.ensure_pop()?;
+                        let array_value = self.stack.ensure_pop()?;
+
+                        let array_obj_index =
+                            self.as_object_ptr(&array_value, ObjectType::Array)?;
+
+                        // Get the index
+                        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+                        // bounds checked below
+                        let index = match index_value {
+                            Value::Int(i) => {
+                                if i < 0 {
+                                    return Err(InternalError::ArrayIndexIsNegative(i).into());
+                                }
+                                i as usize
+                            }
+                            _ => {
+                                return Err(InternalError::TypeError {
+                                    expected: Type::Int,
+                                    got: self.type_of(&index_value),
+                                }
+                                .into());
+                            }
+                        };
+
+                        // Extract the array element before pushing to stack
+                        let element = {
+                            let Object::Array(array) = self.get_object(array_obj_index) else {
+                                return Err(VmError::from(InternalError::TypeError {
+                                    expected: ObjectType::Array.into(),
+                                    got: ObjectType::of(self.get_object(array_obj_index)).into(),
+                                }));
+                            };
+
+                            // Check bounds
                             if index >= array.len() {
                                 return Err(VmError::from(InternalError::ArrayIndexOutOfBounds {
                                     index,
@@ -1701,695 +2061,697 @@ impl BexVm {
                             }
 
                             array[index]
-                        }
+                        };
 
-                        other => {
-                            return Err(VmError::from(InternalError::TypeError {
-                                expected: ObjectType::Array.into(),
-                                got: ObjectType::of(other).into(),
-                            }));
-                        }
-                    };
-
-                    // Change graph topology
-                    let watched_node = NodeId::HeapObject(array_object_index);
-                    self.update_watched_node(
-                        watched_node,
-                        watch::Path::ArrayIndex(index),
-                        old_value,
-                        new_value,
-                    )?;
-
-                    // Set the new value.
-                    if let Object::Array(array) = self.get_object_mut(array_object_index) {
-                        array[index] = new_value;
+                        // Push the element onto the stack
+                        self.stack.push(element);
                     }
 
-                    let notifications = self.process_notifications(watched_node)?;
+                    Instruction::LoadMapElement => {
+                        // LoadMapElement Instruction
+                        //
+                        // Stack before: [map, key]
+                        // Stack after: [value]
+                        //
+                        // Interpretation steps:
+                        // 1. Pop key from stack (top element)
+                        // 2. Pop map reference from stack (bottom element)
+                        // 3. Validate that the popped map reference is indeed a map object
+                        // 4. Get the key as a string from the objects pool (maps use string keys)
+                        //    - Validate key_value is an object reference to a String
+                        //    - Get the string reference from the objects pool
+                        // 5. Look up the value at map[key]
+                        // 6. Handle the case where key doesn't exist in the map
+                        //    - Return a runtime error NoSuchKeyInMap if key not found
+                        // 7. Push the found value onto the stack
 
-                    // borrow checker.
-                    // No need to reassign frame since we're using frame_idx
-                    function = self
-                        .get_object(self.frames[frame_idx].function)
-                        .as_function()?
-                        .clone();
+                        let key_value = self.stack.ensure_pop()?;
+                        let map_value = self.stack.ensure_pop()?;
 
-                    if !notifications.is_empty() {
-                        return Ok(VmExecState::Notify(WatchNotification::Variables(
-                            notifications,
-                        )));
-                    }
-                }
+                        let map_index = self.as_object_ptr(&map_value, ObjectType::Map)?;
 
-                Instruction::StoreMapElement => {
-                    // Instruction args.
-                    let new_value = self.stack.ensure_pop()?;
-                    let key_value = self.stack.ensure_pop()?;
-                    let map_value = self.stack.ensure_pop()?;
-
-                    // Get the string key from the objects pool.
-                    let key_index = self.as_object_ptr(&key_value, ObjectType::String)?;
-                    let key = self.get_object(key_index).as_string()?.clone();
-
-                    let map_index = self.as_object_ptr(&map_value, ObjectType::Map)?;
-
-                    // Read old value (and typecheck).
-                    //
-                    // If the map didn't contain any value we'll use null so
-                    // there's not watch graph edge to update.
-                    let old_value = match self.get_object(map_index) {
-                        Object::Map(map) => map.get(&key).copied().unwrap_or(Value::Null),
-
-                        other => {
+                        let Object::Map(map) = self.get_object(map_index) else {
                             return Err(VmError::from(InternalError::TypeError {
                                 expected: ObjectType::Map.into(),
-                                got: ObjectType::of(other).into(),
+                                got: ObjectType::of(self.get_object(map_index)).into(),
                             }));
-                        }
-                    };
+                        };
 
-                    // Change graph topology
-                    let watched_node = NodeId::HeapObject(map_index);
+                        // Get the string key from the objects pool
+                        let key_index = self.as_object_ptr(&key_value, ObjectType::String)?;
+                        let key = self.get_object(key_index).as_string()?;
 
-                    self.update_watched_node(
-                        watched_node,
-                        watch::Path::MapKey(key.clone()),
-                        old_value,
-                        new_value,
-                    )?;
+                        // Look up the value in the map
+                        let value = map.get(key).copied().ok_or(RuntimeError::NoSuchKeyInMap)?;
 
-                    // Set the new value.
-                    if let Object::Map(map) = self.get_object_mut(map_index) {
-                        map.insert(key, new_value);
+                        // Push the value onto the stack
+                        self.stack.push(value);
                     }
 
-                    let notifications = self.process_notifications(watched_node)?;
+                    Instruction::StoreArrayElement => {
+                        // Instruction args.
+                        let new_value = self.stack.ensure_pop()?;
+                        let index_value = self.stack.ensure_pop()?;
+                        let array_value = self.stack.ensure_pop()?;
+                        let array_object_index =
+                            self.as_object_ptr(&array_value, ObjectType::Array)?;
 
-                    // borrow checker.
-                    // No need to reassign frame since we're using frame_idx
-                    function = self
-                        .get_object(self.frames[frame_idx].function)
-                        .as_function()?
-                        .clone();
+                        // Verify index.
+                        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+                        // bounds checked below
+                        let index = match index_value {
+                            Value::Int(i) => {
+                                if i < 0 {
+                                    return Err(InternalError::ArrayIndexIsNegative(i).into());
+                                }
+                                i as usize
+                            }
+                            other => {
+                                return Err(VmError::from(InternalError::TypeError {
+                                    expected: Type::Int,
+                                    got: self.type_of(&other),
+                                }));
+                            }
+                        };
 
-                    if !notifications.is_empty() {
-                        return Ok(VmExecState::Notify(WatchNotification::Variables(
-                            notifications,
-                        )));
-                    }
-                }
+                        // Read old value (and typecheck).
+                        let old_value = match self.get_object(array_object_index) {
+                            Object::Array(array) => {
+                                // Check bounds.
+                                if index >= array.len() {
+                                    return Err(VmError::from(
+                                        InternalError::ArrayIndexOutOfBounds {
+                                            index,
+                                            length: array.len(),
+                                        },
+                                    ));
+                                }
 
-                Instruction::AllocInstance(index) => {
-                    // Convert compile-time ObjectIndex to HeapPtr
-                    let class_ptr = self.idx_to_ptr(index);
-                    let Object::Class(class) = self.get_object(class_ptr) else {
-                        return Err(InternalError::TypeError {
-                            expected: ObjectType::Class.into(),
-                            got: ObjectType::of(self.get_object(class_ptr)).into(),
+                                array[index]
+                            }
+
+                            other => {
+                                return Err(VmError::from(InternalError::TypeError {
+                                    expected: ObjectType::Array.into(),
+                                    got: ObjectType::of(other).into(),
+                                }));
+                            }
+                        };
+
+                        // Change graph topology
+                        let watched_node = NodeId::HeapObject(array_object_index);
+                        self.update_watched_node(
+                            watched_node,
+                            watch::Path::ArrayIndex(index),
+                            old_value,
+                            new_value,
+                        )?;
+
+                        // Set the new value.
+                        if let Object::Array(array) = self.get_object_mut(array_object_index) {
+                            array[index] = new_value;
                         }
-                        .into());
-                    };
 
-                    // Allocate the fields.
-                    let mut fields = Vec::with_capacity(class.fields.len());
-                    fields.resize(class.fields.len(), Value::Null);
+                        let notifications = self.process_notifications(watched_node)?;
 
-                    // Allocate an instance of the class.
-                    let instance_ptr = self.tlab.alloc(Object::Instance(Instance {
-                        class: class_ptr,
-                        fields,
-                    }));
+                        if !notifications.is_empty() {
+                            return Ok(Some(VmExecState::Notify(WatchNotification::Variables(
+                                notifications,
+                            ))));
+                        }
+                    }
 
-                    // Push the instance object on top of the stack.
-                    self.stack.push(Value::Object(instance_ptr));
+                    Instruction::StoreMapElement => {
+                        // Instruction args.
+                        let new_value = self.stack.ensure_pop()?;
+                        let key_value = self.stack.ensure_pop()?;
+                        let map_value = self.stack.ensure_pop()?;
 
-                    // borrow check.
-                    function = self
-                        .get_object(self.frames[frame_idx].function)
-                        .as_function()?
-                        .clone();
-                }
+                        // Get the string key from the objects pool.
+                        let key_index = self.as_object_ptr(&key_value, ObjectType::String)?;
+                        let key = self.get_object(key_index).as_string()?.clone();
 
-                // TODO: Contains a lot of typechecking, we know at compile time
-                // that all this stuff is right. Should do something about it.
-                Instruction::AllocVariant(enum_index) => {
-                    // Convert compile-time ObjectIndex to HeapPtr
-                    let enum_ptr = self.idx_to_ptr(enum_index);
-                    // Extract the variant count before popping from stack to avoid borrow conflicts
-                    let variant_count = {
-                        let Object::Enum(enm) = self.get_object(enum_ptr) else {
+                        let map_index = self.as_object_ptr(&map_value, ObjectType::Map)?;
+
+                        // Read old value (and typecheck).
+                        //
+                        // If the map didn't contain any value we'll use null so
+                        // there's not watch graph edge to update.
+                        let old_value = match self.get_object(map_index) {
+                            Object::Map(map) => map.get(&key).copied().unwrap_or(Value::Null),
+
+                            other => {
+                                return Err(VmError::from(InternalError::TypeError {
+                                    expected: ObjectType::Map.into(),
+                                    got: ObjectType::of(other).into(),
+                                }));
+                            }
+                        };
+
+                        // Change graph topology
+                        let watched_node = NodeId::HeapObject(map_index);
+
+                        self.update_watched_node(
+                            watched_node,
+                            watch::Path::MapKey(key.clone()),
+                            old_value,
+                            new_value,
+                        )?;
+
+                        // Set the new value.
+                        if let Object::Map(map) = self.get_object_mut(map_index) {
+                            map.insert(key, new_value);
+                        }
+
+                        let notifications = self.process_notifications(watched_node)?;
+
+                        if !notifications.is_empty() {
+                            return Ok(Some(VmExecState::Notify(WatchNotification::Variables(
+                                notifications,
+                            ))));
+                        }
+                    }
+
+                    Instruction::AllocInstance(index) => {
+                        // Convert compile-time ObjectIndex to HeapPtr
+                        let class_ptr = self.idx_to_ptr(index);
+                        let Object::Class(class) = self.get_object(class_ptr) else {
                             return Err(InternalError::TypeError {
-                                expected: ObjectType::Enum.into(),
-                                got: ObjectType::of(self.get_object(enum_ptr)).into(),
+                                expected: ObjectType::Class.into(),
+                                got: ObjectType::of(self.get_object(class_ptr)).into(),
                             }
                             .into());
                         };
-                        enm.variants.len()
-                    };
 
-                    let variant = self.stack.ensure_pop()?;
+                        // Allocate the fields.
+                        let mut fields = Vec::with_capacity(class.fields.len());
+                        fields.resize(class.fields.len(), Value::Null);
 
-                    let Value::Int(variant_index) = variant else {
-                        return Err(InternalError::TypeError {
-                            expected: Type::Int,
-                            got: self.type_of(&variant),
-                        }
-                        .into());
-                    };
+                        // Allocate an instance of the class.
+                        let instance_ptr = self.tlab.alloc(Object::Instance(Instance {
+                            class: class_ptr,
+                            fields,
+                        }));
 
-                    if variant_index < 0 {
-                        return Err(InternalError::ArrayIndexIsNegative(variant_index).into());
+                        // Push the instance object on top of the stack.
+                        self.stack.push(Value::Object(instance_ptr));
                     }
 
-                    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-                    // checked non-negative above
-                    let variant_usize = variant_index as usize;
+                    // TODO: Contains a lot of typechecking, we know at compile time
+                    // that all this stuff is right. Should do something about it.
+                    Instruction::AllocVariant(enum_index) => {
+                        // Convert compile-time ObjectIndex to HeapPtr
+                        let enum_ptr = self.idx_to_ptr(enum_index);
+                        // Extract the variant count before popping from stack to avoid borrow conflicts
+                        let variant_count = {
+                            let Object::Enum(enm) = self.get_object(enum_ptr) else {
+                                return Err(InternalError::TypeError {
+                                    expected: ObjectType::Enum.into(),
+                                    got: ObjectType::of(self.get_object(enum_ptr)).into(),
+                                }
+                                .into());
+                            };
+                            enm.variants.len()
+                        };
 
-                    if variant_usize >= variant_count {
-                        return Err(InternalError::ArrayIndexOutOfBounds {
+                        let variant = self.stack.ensure_pop()?;
+
+                        let Value::Int(variant_index) = variant else {
+                            return Err(InternalError::TypeError {
+                                expected: Type::Int,
+                                got: self.type_of(&variant),
+                            }
+                            .into());
+                        };
+
+                        if variant_index < 0 {
+                            return Err(InternalError::ArrayIndexIsNegative(variant_index).into());
+                        }
+
+                        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+                        // checked non-negative above
+                        let variant_usize = variant_index as usize;
+
+                        if variant_usize >= variant_count {
+                            return Err(InternalError::ArrayIndexOutOfBounds {
+                                index: variant_usize,
+                                length: variant_count,
+                            }
+                            .into());
+                        }
+
+                        let variant_ptr = self.tlab.alloc(Object::Variant(Variant {
+                            enm: enum_ptr,
                             index: variant_usize,
-                            length: variant_count,
-                        }
-                        .into());
+                        }));
+
+                        // Push the variant object on top of the stack.
+                        self.stack.push(Value::Object(variant_ptr));
                     }
 
-                    let variant_ptr = self.tlab.alloc(Object::Variant(Variant {
-                        enm: enum_ptr,
-                        index: variant_usize,
-                    }));
+                    Instruction::DispatchFuture(callee) => {
+                        let callee_value = self.globals[callee];
+                        let expected_type = FunctionType::SysOp;
+                        let callee_ptr = self.as_object_ptr(&callee_value, expected_type.into())?;
 
-                    // Push the variant object on top of the stack.
-                    self.stack.push(Value::Object(variant_ptr));
+                        // Can't dispatch if it's not a function ¯\_(ツ)_/¯
+                        let Object::Function(callable_future) = self.get_object(callee_ptr) else {
+                            return Err(InternalError::TypeError {
+                                expected: expected_type.into(),
+                                got: ObjectType::of(self.get_object(callee_ptr)).into(),
+                            }
+                            .into());
+                        };
 
-                    // borrow check.
-                    function = self
-                        .get_object(self.frames[frame_idx].function)
-                        .as_function()?
-                        .clone();
-                }
-
-                Instruction::DispatchFuture(arg_count) => {
-                    let args_offset = self.stack.ensure_slot_from_top(arg_count)?;
-
-                    let expected_type = FunctionType::SysOp;
-
-                    let index =
-                        self.as_object_ptr(&self.stack[args_offset], expected_type.into())?;
-
-                    // Can't call a function if it's not a function ¯\_(ツ)_/¯
-                    let Object::Function(callable_future) = self.get_object(index) else {
-                        return Err(InternalError::TypeError {
-                            expected: expected_type.into(),
-                            got: ObjectType::of(self.get_object(index)).into(),
-                        }
-                        .into());
-                    };
-
-                    // Compiler should have already checked this so we could
-                    // skip it but it's an easy and fast check.
-                    if arg_count != callable_future.arity {
-                        return Err(VmError::from(InternalError::InvalidArgumentCount {
-                            expected: callable_future.arity,
-                            got: arg_count,
-                        }));
-                    }
-
-                    // Must be a sys_op - extract the SysOp.
-                    let FunctionKind::SysOp(sys_op) = callable_future.kind else {
-                        return Err(VmError::from(InternalError::TypeError {
-                            expected: FunctionType::SysOp.into(),
-                            got: FunctionType::from(&callable_future.kind).into(),
-                        }));
-                    };
-
-                    // Collect the function call args and cleanup the call.
-                    let future_args: Vec<Value> = self.stack.drain(args_offset..).skip(1).collect();
-
-                    // Create the pending future with the SysOp enum.
-                    let pending_future = PendingFuture {
-                        operation: sys_op,
-                        args: future_args,
-                    };
-
-                    // Allocate the future.
-                    let future_value = self.alloc_future(Future::Pending(pending_future));
-
-                    // Extract the index
-                    let Value::Object(object_index) = future_value else {
-                        unreachable!("alloc_future returns Value::Object")
-                    };
-
-                    // Now leave the future on top of the stack.
-                    self.stack.push(future_value);
-
-                    // Yield control flow back to the embedder.
-                    return Ok(VmExecState::ScheduleFuture(object_index));
-                }
-
-                Instruction::Await => {
-                    let value = self.stack.ensure_stack_top()?;
-
-                    let wanted_type = FutureType::Any;
-
-                    let index = self.as_object_ptr(&self.stack[value], wanted_type.into())?;
-
-                    // Check if future is ready and extract value if so
-                    let ready_value = {
-                        let Object::Future(awaiting) = self.get_object(index) else {
+                        // Must be a sys_op - extract the SysOp.
+                        let FunctionKind::SysOp(sys_op) = callable_future.kind else {
                             return Err(VmError::from(InternalError::TypeError {
-                                expected: wanted_type.into(),
-                                got: ObjectType::of(self.get_object(index)).into(),
+                                expected: FunctionType::SysOp.into(),
+                                got: FunctionType::from(&callable_future.kind).into(),
                             }));
                         };
 
-                        match awaiting {
-                            // Can't do nothing, handle control flow back to embedder.
-                            Future::Pending(_) => {
-                                return Ok(VmExecState::Await(index));
+                        let args_offset =
+                            self.stack.len().checked_sub(callable_future.arity).ok_or(
+                                InternalError::NotEnoughItemsOnStack(callable_future.arity),
+                            )?;
+                        let args_offset = StackIndex::from_raw(args_offset);
+
+                        // Collect function call args and cleanup consumed stack.
+                        let future_args: Vec<Value> = self.stack.drain(args_offset..).collect();
+
+                        // Create the pending future with the SysOp enum.
+                        let pending_future = PendingFuture {
+                            operation: sys_op,
+                            args: future_args,
+                        };
+
+                        // Allocate the future.
+                        let future_value = self.alloc_future(Future::Pending(pending_future));
+
+                        // Extract the index
+                        let Value::Object(object_index) = future_value else {
+                            unreachable!("alloc_future returns Value::Object")
+                        };
+
+                        // Now leave the future on top of the stack.
+                        self.stack.push(future_value);
+
+                        // Yield control flow back to the embedder.
+                        return Ok(Some(VmExecState::ScheduleFuture(object_index)));
+                    }
+
+                    Instruction::Await => {
+                        let value = self.stack.ensure_stack_top()?;
+
+                        let wanted_type = FutureType::Any;
+
+                        let index = self.as_object_ptr(&self.stack[value], wanted_type.into())?;
+
+                        // Check if future is ready and extract value if so
+                        let ready_value = {
+                            let Object::Future(awaiting) = self.get_object(index) else {
+                                return Err(VmError::from(InternalError::TypeError {
+                                    expected: wanted_type.into(),
+                                    got: ObjectType::of(self.get_object(index)).into(),
+                                }));
+                            };
+
+                            match awaiting {
+                                // Can't do nothing, handle control flow back to embedder.
+                                Future::Pending(_) => {
+                                    return Ok(Some(VmExecState::Await(index)));
+                                }
+
+                                // Return the ready value
+                                Future::Ready(value) => *value,
                             }
+                        };
 
-                            // Return the ready value
-                            Future::Ready(value) => *value,
-                        }
-                    };
+                        // Replace the future on the eval stack with the ready value
+                        self.stack.pop();
+                        self.stack.push(ready_value);
+                    }
 
-                    // Replace the future on the eval stack with the ready value
-                    self.stack.pop();
-                    self.stack.push(ready_value);
-                }
+                    Instruction::Watch(index) => {
+                        // Stack contains: [channel, filter]
 
-                Instruction::Watch(index) => {
-                    // Stack contains: [channel, filter]
-
-                    // Consume filter.
-                    let filter = match self.stack.ensure_pop()? {
-                        Value::Null => WatchFilter::Default,
-                        Value::Object(object_index) => match self.get_object(object_index) {
-                            Object::Function(_) => WatchFilter::Function(object_index),
-                            Object::String(mode) if mode == "manual" => WatchFilter::Manual,
-                            Object::String(mode) if mode == "never" => WatchFilter::Paused,
+                        // Consume filter.
+                        let filter = match self.stack.ensure_pop()? {
+                            Value::Null => WatchFilter::Default,
+                            Value::Object(object_index) => match self.get_object(object_index) {
+                                Object::Function(_) => WatchFilter::Function(object_index),
+                                Object::String(mode) if mode == "manual" => WatchFilter::Manual,
+                                Object::String(mode) if mode == "never" => WatchFilter::Paused,
+                                _ => {
+                                    return Err(
+                                        RuntimeError::Other("Invalid filter".to_string()).into()
+                                    );
+                                }
+                            },
                             _ => {
                                 return Err(
                                     RuntimeError::Other("Invalid filter".to_string()).into()
                                 );
                             }
-                        },
-                        _ => return Err(RuntimeError::Other("Invalid filter".to_string()).into()),
-                    };
+                        };
 
-                    // Consume channel.
-                    let channel_value = self.stack.ensure_pop()?;
-                    let channel = self.as_string(&channel_value)?.to_owned();
+                        // Consume channel.
+                        let channel_value = self.stack.ensure_pop()?;
+                        let channel = self.as_string(&channel_value)?.to_owned();
 
-                    let local_var_index =
-                        StackIndex::from_raw(self.frames[frame_idx].locals_offset.raw() + index);
-                    let value = self.stack[local_var_index];
-
-                    // The variable index should be the same as where the value is stored
-                    let var_node = NodeId::LocalVar(local_var_index);
-
-                    // Register this variable as an emittable root.
-                    self.watch.register_root(
-                        var_node,
-                        RootState {
-                            channel,
-                            value,
-                            filter,
-                            last_notified: None,
-                            last_assigned: None,
-                        },
-                    );
-
-                    #[allow(clippy::cast_sign_loss)] // instruction_ptr is validated non-negative
-                    let watched_var_name = &function.locals_in_scope
-                        [function.bytecode.scopes[instruction_ptr as usize]][index];
-                    // Track this so we can unregister on scope exit
-                    self.watched_vars.insert(
-                        local_var_index,
-                        (watched_var_name.clone(), function.name.clone()),
-                    );
-
-                    // If it's an object, build the entire dependency graph
-                    if let Value::Object(object_index) = value {
-                        // Build the graph.
-                        // Track dependencies first (using closure to avoid borrow conflicts)
-                        watch::track_watch_dependencies(&mut self.watch, value);
-
-                        // Link the root emittable variable to the object
-                        self.watch.link_edge(
-                            var_node,
-                            watch::Path::Binding,
-                            NodeId::HeapObject(object_index),
+                        let local_var_index = Self::local_slot_stack_index(
+                            self.frames[frame_idx].locals_offset,
+                            index,
                         );
-                    }
-                }
-
-                Instruction::Unwatch(index) => {
-                    let local_var_index =
-                        StackIndex::from_raw(self.frames[frame_idx].locals_offset.raw() + index);
-
-                    // Remove from watched_vars tracking
-                    if self.watched_vars.remove(&local_var_index).is_some() {
-                        let var_node = NodeId::LocalVar(local_var_index);
-                        // Unregister this variable as a root
-                        self.watch.unregister_root(var_node);
-
-                        // If it was linked to an object, unlink it
                         let value = self.stack[local_var_index];
+
+                        // The variable index should be the same as where the value is stored
+                        let var_node = NodeId::LocalVar(local_var_index);
+
+                        // Register this variable as an emittable root.
+                        self.watch.register_root(
+                            var_node,
+                            RootState {
+                                channel,
+                                value,
+                                filter,
+                                last_notified: None,
+                                last_assigned: None,
+                            },
+                        );
+
+                        let watched_var_name = &function.local_names[index];
+                        // Track this so we can unregister on scope exit
+                        self.watched_vars.insert(
+                            local_var_index,
+                            (watched_var_name.clone(), function.name.clone()),
+                        );
+
+                        // If it's an object, build the entire dependency graph
                         if let Value::Object(object_index) = value {
-                            self.watch.unlink_edge(
+                            watch::track_watch_dependencies(
+                                &mut self.watch,
                                 var_node,
                                 watch::Path::Binding,
-                                NodeId::HeapObject(object_index),
+                                object_index,
                             );
                         }
                     }
-                }
 
-                Instruction::Notify(index) => {
-                    let local_var_index =
-                        StackIndex::from_raw(self.frames[frame_idx].locals_offset.raw() + index);
-                    let var_node = NodeId::LocalVar(local_var_index);
+                    Instruction::Unwatch(index) => {
+                        let local_var_index = Self::local_slot_stack_index(
+                            self.frames[frame_idx].locals_offset,
+                            index,
+                        );
 
-                    let notifications = self.watch.copy_roots_reaching(var_node);
-
-                    if notifications.len() != 1 && notifications.first() != Some(&var_node) {
-                        return Err(RuntimeError::Other("Invalid manual notify".to_string()).into());
-                    }
-
-                    return Ok(VmExecState::Notify(WatchNotification::Variables(
-                        notifications,
-                    )));
-                }
-
-                Instruction::Call(arg_count) => {
-                    // Function calls are pushed onto the stack like this:
-                    //
-                    // [callee, arg1, arg2, ..., argN]
-                    //
-                    // The callee is a ref to the function object, and after
-                    // that we have all the function arguments. `arg_count` is
-                    // the number of arguments pushed after the callee.
-                    //
-                    // That's how we compute the relative offset of the callee
-                    // and it's local args in the stack.
-                    let locals_offset = self.stack.ensure_slot_from_top(arg_count)?;
-
-                    // Get the function object from the stack.
-                    let local = &self.stack[locals_offset];
-
-                    let function_type = FunctionType::Callable;
-
-                    let index = self.as_object_ptr(local, function_type.into())?;
-
-                    // Can't call a function if it's not a function ¯\_(ツ)_/¯
-                    let Object::Function(callee) = self.get_object(index) else {
-                        return Err(InternalError::TypeError {
-                            expected: function_type.into(),
-                            got: ObjectType::of(self.get_object(index)).into(),
-                        }
-                        .into());
-                    };
-
-                    // Compiler should have already checked this so we could
-                    // skip it but it's an easy and fast check.
-                    if arg_count != callee.arity {
-                        return Err(VmError::from(InternalError::InvalidArgumentCount {
-                            expected: callee.arity,
-                            got: arg_count,
-                        }));
-                    }
-
-                    // Check if we've reached the max call stack size.
-                    if self.frames.len() >= MAX_FRAMES {
-                        return Err(VmError::RuntimeError(RuntimeError::StackOverflow));
-                    }
-
-                    match callee.kind {
-                        FunctionKind::Native(func_ptr) => {
-                            // Cast the type-erased pointer back to NativeFunction.
-                            //
-                            // SAFETY: The pointer was created by casting a NativeFunction to *const ()
-                            // in attach_builtins, so it's safe to cast it back. We use transmute
-                            // because Rust doesn't allow `as` casts from *const () to fn pointers.
-                            // The explicit type parameters document exactly what we're doing.
-                            let func = unsafe {
-                                std::mem::transmute::<*const (), NativeFunction>(func_ptr)
-                            };
-
-                            // NOTE: (perf) could use drain(..) instead, or even maintain the arguments
-                            // reference in the stack, using `swap` to insert the result.
-                            let args = self.stack
-                                [StackIndex::from_raw(locals_offset.into_raw() + 1)..]
-                                .to_owned();
-
-                            // Run Rust native function.
-                            let result = func(self, &args)?;
-
-                            // Drop function call and place result on top.
-                            self.stack.drain(locals_offset..);
-                            self.stack.push(result);
-
-                            // No need to update frame_idx since we didn't push a new frame.
-                            // Just update the function reference.
-                            function = self
-                                .get_object(self.frames[frame_idx].function)
-                                .as_function()?
-                                .clone();
-                        }
-
-                        FunctionKind::Bytecode => {
-                            // Push the new frame.
-                            self.frames.push(Frame {
-                                function: index,
-                                instruction_ptr: 0,
-                                locals_offset,
-                            });
-
-                            // Update frame_idx to point to the new frame.
-                            frame_idx = self.frames.len() - 1;
-
-                            // Grab function ref. We do this to avoid running this
-                            // code at the beginning of each iteration since it's
-                            // totally unnecessary. The function only changes when the
-                            // frame changes.
-                            function = self
-                                .get_object(self.frames[frame_idx].function)
-                                .as_function()?
-                                .clone();
-                        }
-
-                        FunctionKind::SysOp(_) => {
-                            return Err(InternalError::TypeError {
-                                expected: FunctionType::Callable.into(),
-                                got: FunctionType::from(&callee.kind).into(),
-                            }
-                            .into());
-                        }
-
-                        FunctionKind::NativeUnresolved => {
-                            // This should never happen - native functions should be resolved
-                            // by attach_builtins() before the VM runs.
-                            panic!(
-                                "Unresolved native function '{}' - did you forget to call attach_builtins()?",
-                                callee.name
-                            );
-                        }
-                    }
-                }
-
-                Instruction::Return => {
-                    // Pop the result from the eval stack.
-                    let result = self.stack.ensure_pop()?;
-
-                    // Clean up any emittable variables in the function's scope
-                    for i in self.frames[frame_idx].locals_offset.into_raw()..self.stack.len() {
-                        let index = StackIndex::from_raw(i);
-                        if self.watched_vars.remove(&index).is_some() {
-                            let var_node = NodeId::LocalVar(index);
-
-                            // Unregister the root since the variable is going out of scope
+                        // Remove from watched_vars tracking
+                        if self.watched_vars.remove(&local_var_index).is_some() {
+                            let var_node = NodeId::LocalVar(local_var_index);
+                            // Unregister this variable as a root
                             self.watch.unregister_root(var_node);
 
-                            // Also unlink any edge from this variable
-                            if i < self.stack.len() {
-                                if let Value::Object(obj) = self.stack[index] {
-                                    self.watch.unlink_edge(
-                                        var_node,
-                                        watch::Path::Binding,
-                                        NodeId::HeapObject(obj),
-                                    );
-                                }
+                            // If it was linked to an object, unlink it
+                            let value = self.stack[local_var_index];
+                            if let Value::Object(object_index) = value {
+                                self.watch.unlink_edge(
+                                    var_node,
+                                    watch::Path::Binding,
+                                    NodeId::HeapObject(object_index),
+                                );
                             }
                         }
                     }
 
-                    // Restore the eval stack to the state before the function
-                    // was called and leave the result on top.
-                    self.stack.drain(self.frames[frame_idx].locals_offset..);
-                    self.stack.push(result);
+                    Instruction::Notify(index) => {
+                        let local_var_index = Self::local_slot_stack_index(
+                            self.frames[frame_idx].locals_offset,
+                            index,
+                        );
+                        let var_node = NodeId::LocalVar(local_var_index);
 
-                    // Pop from the call stack.
-                    self.frames.pop();
+                        let notifications = self.watch.copy_roots_reaching(var_node);
 
-                    // Return from interrupt.
-                    if Some(self.frames.len()) == self.interrupt_frame {
-                        self.interrupt_frame = None;
-                        return self
+                        if notifications.len() != 1 && notifications.first() != Some(&var_node) {
+                            return Err(
+                                RuntimeError::Other("Invalid manual notify".to_string()).into()
+                            );
+                        }
+
+                        return Ok(Some(VmExecState::Notify(WatchNotification::Variables(
+                            notifications,
+                        ))));
+                    }
+
+                    Instruction::Call(callee) => {
+                        let callee_value = self.globals[callee];
+                        let (callee_ptr, arg_count) = self.resolve_callable_target(callee_value)?;
+                        let args_offset = self
                             .stack
-                            .ensure_pop()
-                            .map(VmExecState::Complete)
-                            .map_err(Into::into);
+                            .len()
+                            .checked_sub(arg_count)
+                            .ok_or(InternalError::NotEnoughItemsOnStack(arg_count))?;
+                        let locals_offset = StackIndex::from_raw(args_offset);
+
+                        if let Some(state) = self.execute_call_from_locals_offset(
+                            callee_ptr,
+                            locals_offset,
+                            arg_count,
+                            &mut frame_idx,
+                            &mut function,
+                        )? {
+                            return Ok(Some(state));
+                        }
                     }
 
-                    // If there are no more frames, we're done.
-                    if self.frames.is_empty() {
-                        return self
+                    Instruction::CallIndirect => {
+                        // Stack layout: [arg1, arg2, ..., argN, callee]
+                        let callee_slot = self.stack.ensure_stack_top()?;
+                        let callee_value = self.stack[callee_slot];
+                        let (callee_ptr, arg_count) = self.resolve_callable_target(callee_value)?;
+                        let args_offset = self
                             .stack
-                            .ensure_pop()
-                            .map(VmExecState::Complete)
-                            .map_err(Into::into);
+                            .len()
+                            .checked_sub(arg_count + 1)
+                            .ok_or(InternalError::NotEnoughItemsOnStack(arg_count + 1))?;
+                        let _popped_callee = self.stack.ensure_pop()?;
+                        let locals_offset = StackIndex::from_raw(args_offset);
+
+                        if let Some(state) = self.execute_call_from_locals_offset(
+                            callee_ptr,
+                            locals_offset,
+                            arg_count,
+                            &mut frame_idx,
+                            &mut function,
+                        )? {
+                            return Ok(Some(state));
+                        }
                     }
 
-                    // Resume previous frame execution.
-                    frame_idx = self.frames.len() - 1;
+                    Instruction::Return => {
+                        // Pop the result from the eval stack.
+                        let result = self.stack.ensure_pop()?;
 
-                    // Point to the previous frame's function. Read the
-                    // implementation of `Instruction::Call` above this one for
-                    // more information about this piece.
-                    function = self
-                        .get_object(self.frames[frame_idx].function)
-                        .as_function()?
-                        .clone();
-                }
+                        // Check if this frame was traced.
+                        // Capture function name before popping the frame.
+                        let span_exit = if self.traced_frames.last() == Some(&frame_idx) {
+                            let func_name = self
+                                .get_object(self.frames[frame_idx].function)
+                                .as_function()
+                                .map(|f| f.name.clone())
+                                .ok();
+                            self.traced_frames.pop();
+                            func_name
+                        } else {
+                            None
+                        };
 
-                Instruction::Assert => {
-                    let value = self.stack.pop().ok_or(RuntimeError::AssertionError)?;
+                        // Restore the eval stack to the state before the function
+                        // was called and leave the result on top.
+                        self.stack.drain(self.frames[frame_idx].locals_offset..);
+                        self.stack.push(result);
 
-                    let Value::Bool(condition_result) = value else {
-                        return Err(InternalError::TypeError {
-                            expected: Type::Bool,
-                            got: self.type_of(&value),
+                        // Pop from the call stack.
+                        let popped_depth = frame_idx;
+                        self.frames.pop();
+                        self.discard_unwind_handlers_from_depth(popped_depth);
+
+                        // Return from interrupt.
+                        if Some(self.frames.len()) == self.interrupt_frame {
+                            self.interrupt_frame = None;
+                            return self
+                                .stack
+                                .ensure_pop()
+                                .map(VmExecState::Complete)
+                                .map(Some)
+                                .map_err(Into::into);
                         }
-                        .into());
-                    };
 
-                    if !condition_result {
-                        return Err(RuntimeError::AssertionError.into());
+                        // If there are no more frames, we're done.
+                        if self.frames.is_empty() {
+                            return self
+                                .stack
+                                .ensure_pop()
+                                .map(VmExecState::Complete)
+                                .map(Some)
+                                .map_err(Into::into);
+                        }
+
+                        // Yield FunctionExit for traced frames (with result value).
+                        if let Some(name) = span_exit {
+                            return Ok(Some(VmExecState::SpanNotify(
+                                SpanNotification::FunctionExit {
+                                    function_name: name,
+                                    result,
+                                },
+                            )));
+                        }
+
+                        // Resume previous frame execution.
+                        frame_idx = self.frames.len() - 1;
+
+                        // SAFETY: See `load_function` doc comment.
+                        function = unsafe { self.load_function(frame_idx)? };
                     }
-                }
 
-                Instruction::AllocMap(n) => {
-                    let map = if n > 0 {
-                        let end_of_values = self.stack.ensure_slot_from_top(2 * n - 1)?;
-                        let end_of_keys = self.stack.ensure_slot_from_top(n - 1)?;
-                        let idx_of_last_key = self.stack.ensure_slot_from_top(n - 1)?;
+                    Instruction::Assert => {
+                        let value = self.stack.pop().ok_or(RuntimeError::AssertionError)?;
 
-                        // We can safely copy the objects that act as values so there's no problem
-                        // with not draining them.
-                        let values = self.stack[end_of_values..end_of_keys].iter().copied();
-
-                        // We cannot copy key references since we aren't interning yet, so we
-                        // must clone the strings.
-                        // Here we'll also double-check that the keys are strings. This adds `n`
-                        // branches which is not ideal for performance. Might want to consider this
-                        // in map accesses.
-                        let keys = self.stack[idx_of_last_key..].iter().map(|k| {
-                            let obj_index = self.as_object_ptr(k, ObjectType::String)?;
-
-                            self.get_object(obj_index).as_string().cloned()
-                        });
-
-                        let pairs = values
-                            .zip(keys)
-                            .map(|(val, key_res)| key_res.map(|k| (k, val)));
-
-                        let map = pairs.collect::<Result<IndexMap<_, _>, _>>()?;
-
-                        // drain & drop the drain so that vec is empty.
-                        self.stack.drain(end_of_values..);
-
-                        map
-                    } else {
-                        // nothing to pop.
-                        IndexMap::new()
-                    };
-
-                    let obj_index = self.tlab.alloc(Object::Map(map));
-
-                    self.stack.push(Value::Object(obj_index));
-
-                    // borrow check.
-                    function = self
-                        .get_object(self.frames[frame_idx].function)
-                        .as_function()?
-                        .clone();
-                }
-
-                // ============================================================
-                // Jump Table Instructions
-                // ============================================================
-                Instruction::JumpTable { table_idx, default } => {
-                    // Pop discriminant from stack
-                    let discriminant = self.stack.ensure_pop()?;
-
-                    // Must be an integer
-                    let Value::Int(value) = discriminant else {
-                        return Err(InternalError::TypeError {
-                            expected: Type::Int,
-                            got: self.type_of(&discriminant),
-                        }
-                        .into());
-                    };
-
-                    // Lookup in jump table
-                    let table = &function.bytecode.jump_tables[table_idx];
-                    let offset = table.lookup(value).unwrap_or(default);
-
-                    // Jump
-                    self.frames[frame_idx].instruction_ptr = instruction_ptr + offset;
-                }
-
-                Instruction::Discriminant => {
-                    // Pop value from stack
-                    let value = self.stack.ensure_pop()?;
-
-                    // Must be an object (variants are heap-allocated)
-                    let Value::Object(object_idx) = value else {
-                        return Err(InternalError::TypeError {
-                            expected: ObjectType::Variant.into(),
-                            got: self.type_of(&value),
-                        }
-                        .into());
-                    };
-
-                    // Must be a Variant object
-                    let variant_index = {
-                        let Object::Variant(variant) = self.get_object(object_idx) else {
+                        let Value::Bool(condition_result) = value else {
                             return Err(InternalError::TypeError {
-                                expected: ObjectType::Variant.into(),
-                                got: ObjectType::of(self.get_object(object_idx)).into(),
+                                expected: Type::Bool,
+                                got: self.type_of(&value),
                             }
                             .into());
                         };
-                        variant.index
-                    };
 
-                    // Variant.index is the discriminant we need
-                    #[allow(clippy::cast_possible_wrap)]
-                    self.stack.push(Value::Int(variant_index as i64));
+                        if !condition_result {
+                            return Err(RuntimeError::AssertionError.into());
+                        }
+                    }
+
+                    Instruction::AllocMap(n) => {
+                        let map = if n > 0 {
+                            let end_of_values = self.stack.ensure_slot_from_top(2 * n - 1)?;
+                            let end_of_keys = self.stack.ensure_slot_from_top(n - 1)?;
+                            let idx_of_last_key = self.stack.ensure_slot_from_top(n - 1)?;
+
+                            // We can safely copy the objects that act as values so there's no problem
+                            // with not draining them.
+                            let values = self.stack[end_of_values..end_of_keys].iter().copied();
+
+                            // We cannot copy key references since we aren't interning yet, so we
+                            // must clone the strings.
+                            // Here we'll also double-check that the keys are strings. This adds `n`
+                            // branches which is not ideal for performance. Might want to consider this
+                            // in map accesses.
+                            let keys = self.stack[idx_of_last_key..].iter().map(|k| {
+                                let obj_index = self.as_object_ptr(k, ObjectType::String)?;
+
+                                self.get_object(obj_index).as_string().cloned()
+                            });
+
+                            let pairs = values
+                                .zip(keys)
+                                .map(|(val, key_res)| key_res.map(|k| (k, val)));
+
+                            let map = pairs.collect::<Result<IndexMap<_, _>, _>>()?;
+
+                            // drain & drop the drain so that vec is empty.
+                            self.stack.drain(end_of_values..);
+
+                            map
+                        } else {
+                            // nothing to pop.
+                            IndexMap::new()
+                        };
+
+                        let obj_index = self.tlab.alloc(Object::Map(map));
+
+                        self.stack.push(Value::Object(obj_index));
+                    }
+
+                    // ============================================================
+                    // Jump Table Instructions
+                    // ============================================================
+                    Instruction::JumpTable { table_idx, default } => {
+                        // Pop discriminant from stack
+                        let discriminant = self.stack.ensure_pop()?;
+
+                        // Must be an integer
+                        let Value::Int(value) = discriminant else {
+                            return Err(InternalError::TypeError {
+                                expected: Type::Int,
+                                got: self.type_of(&discriminant),
+                            }
+                            .into());
+                        };
+
+                        // Lookup in jump table
+                        let table = &function.bytecode.jump_tables[table_idx];
+                        let offset = table.lookup(value).unwrap_or(default);
+
+                        // Jump
+                        self.frames[frame_idx].instruction_ptr = instruction_ptr
+                            .checked_add_signed(offset)
+                            .ok_or(InternalError::InvalidJump)?;
+                    }
+
+                    Instruction::Discriminant => {
+                        // Pop value from stack
+                        let value = self.stack.ensure_pop()?;
+
+                        // Must be an object (variants are heap-allocated)
+                        let Value::Object(object_idx) = value else {
+                            return Err(InternalError::TypeError {
+                                expected: ObjectType::Variant.into(),
+                                got: self.type_of(&value),
+                            }
+                            .into());
+                        };
+
+                        // Must be a Variant object
+                        let variant_index = {
+                            let Object::Variant(variant) = self.get_object(object_idx) else {
+                                return Err(InternalError::TypeError {
+                                    expected: ObjectType::Variant.into(),
+                                    got: ObjectType::of(self.get_object(object_idx)).into(),
+                                }
+                                .into());
+                            };
+                            variant.index
+                        };
+
+                        // Variant.index is the discriminant we need
+                        #[allow(clippy::cast_possible_wrap)]
+                        self.stack.push(Value::Int(variant_index as i64));
+                    }
+
+                    Instruction::TypeTag => {
+                        let value = self.stack.ensure_pop()?;
+                        let tag = value_type_tag(&value);
+                        self.stack.push(Value::Int(tag));
+                    }
+
+                    Instruction::Unreachable => {
+                        // This instruction should never be executed. If we reach it,
+                        // there's a bug in the compiler or type system.
+                        return Err(RuntimeError::Unreachable.into());
+                    }
                 }
 
-                Instruction::TypeTag => {
-                    let value = self.stack.ensure_pop()?;
-                    let tag = value_type_tag(&value);
-                    self.stack.push(Value::Int(tag));
-                }
+                Ok(None)
+            })();
 
-                Instruction::Unreachable => {
-                    // This instruction should never be executed. If we reach it,
-                    // there's a bug in the compiler or type system.
-                    return Err(RuntimeError::Unreachable.into());
+            match step_result {
+                Ok(Some(state)) => return Ok(state),
+                Ok(None) => {}
+                Err(error) => {
+                    self.try_unwind_exception(
+                        &mut frame_idx,
+                        &mut function,
+                        VmException::Runtime(error),
+                    )?;
                 }
             }
         }

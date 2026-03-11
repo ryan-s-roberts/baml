@@ -97,6 +97,7 @@ ast_node!(Field, FIELD);
 ast_node!(EnumVariant, ENUM_VARIANT);
 ast_node!(ConfigBlock, CONFIG_BLOCK);
 ast_node!(ConfigItem, CONFIG_ITEM);
+ast_node!(ConfigValue, CONFIG_VALUE);
 ast_node!(ClientField, CLIENT_FIELD);
 ast_node!(PromptField, PROMPT_FIELD);
 ast_node!(RawStringLiteral, RAW_STRING_LITERAL);
@@ -120,6 +121,7 @@ ast_node!(DynamicTypeDef, DYNAMIC_TYPE_DEF);
 #[derive(Debug, Clone)]
 pub struct UnionMemberParts {
     /// Tokens in this union member (WORD, `L_BRACKET`, `R_BRACKET`, QUESTION, etc.).
+    /// Trivia tokens should not be included.
     pub tokens: Vec<SyntaxToken>,
     /// Child nodes in this union member (`STRING_LITERAL`, `TYPE_EXPR`, `TYPE_ARGS`, etc.).
     pub child_nodes: Vec<SyntaxNode>,
@@ -155,36 +157,32 @@ impl UnionMemberParts {
         extract_dotted_name(self.tokens.iter())
     }
 
-    /// Check if this member has a trailing `?` (optional modifier).
-    pub fn is_optional(&self) -> bool {
-        self.tokens
-            .last()
-            .is_some_and(|t| t.kind() == SyntaxKind::QUESTION)
+    /// Get the postfix modifiers (`[]` and `?`) in application order (innermost first).
+    ///
+    /// Works like `TypeExpr::postfix_modifiers()` but operates on the token list
+    /// of a union member instead of directly on CST children.
+    ///
+    /// For `Union???` returns `[Optional, Optional, Optional]`.
+    /// For `Union[]??` returns `[Array, Optional, Optional]`.
+    /// For `Union?[]?` returns `[Optional, Array, Optional]`.
+    pub fn postfix_modifiers(&self) -> Vec<TypePostFixModifier> {
+        collect_postfix_modifiers(self.tokens.iter().map(SyntaxToken::kind))
     }
 
-    /// Count the number of `[]` array modifiers at the end.
+    /// Count the number of `[]` array modifiers on this union member.
+    ///
+    /// For `int` returns 0, for `int[]` returns 1, for `int[][]` returns 2.
     pub fn array_depth(&self) -> usize {
-        let mut depth = 0;
-        let mut i = self.tokens.len();
+        self.postfix_modifiers()
+            .iter()
+            .filter(|m| **m == TypePostFixModifier::Array)
+            .count()
+    }
 
-        // Skip trailing ? if present
-        if i > 0 && self.tokens[i - 1].kind() == SyntaxKind::QUESTION {
-            i -= 1;
-        }
-
-        // Count [] pairs from the end
-        while i >= 2 {
-            if self.tokens[i - 1].kind() == SyntaxKind::R_BRACKET
-                && self.tokens[i - 2].kind() == SyntaxKind::L_BRACKET
-            {
-                depth += 1;
-                i -= 2;
-            } else {
-                break;
-            }
-        }
-
-        depth
+    /// Check if this union member has a trailing `?` (optional modifier).
+    pub fn is_optional(&self) -> bool {
+        self.postfix_modifiers()
+            .contains(&TypePostFixModifier::Optional)
     }
 
     /// Check if this member contains a `STRING_LITERAL` child node.
@@ -252,12 +250,46 @@ impl UnionMemberParts {
             .find(|t| t.kind() == SyntaxKind::INTEGER_LITERAL)
             .and_then(|t| t.text().parse().ok())
     }
+
+    /// Check if this member has a `FLOAT_LITERAL` token and return its text.
+    pub fn float_literal(&self) -> Option<String> {
+        self.tokens
+            .iter()
+            .find(|t| t.kind() == SyntaxKind::FLOAT_LITERAL)
+            .map(|t| t.text().to_string())
+    }
 }
 
 impl Default for UnionMemberParts {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypePostFixModifier {
+    Optional,
+    Array,
+}
+
+/// Shared helper: scan a stream of `SyntaxKind`s and collect postfix modifiers
+/// (`?` → Optional, `[]` → Array) in application order (innermost first).
+/// Assumes that trivia tokens are not included.
+fn collect_postfix_modifiers(kinds: impl Iterator<Item = SyntaxKind>) -> Vec<TypePostFixModifier> {
+    let mut mods = Vec::new();
+    let mut last = None;
+    for kind in kinds {
+        match kind {
+            SyntaxKind::QUESTION => mods.push(TypePostFixModifier::Optional),
+            SyntaxKind::R_BRACKET if last == Some(SyntaxKind::L_BRACKET) => {
+                mods.push(TypePostFixModifier::Array);
+            }
+            _ => (),
+        }
+        last = Some(kind);
+    }
+
+    mods
 }
 
 impl TypeExpr {
@@ -323,6 +355,30 @@ impl TypeExpr {
         }
 
         depth
+    }
+
+    /// Get the postfix modifiers (`[]` and `?`) in application order (innermost first).
+    ///
+    /// For `int` returns `[]`.
+    /// For `int[]` returns `[Array]`.
+    /// For `int[]?` returns `[Array, Optional]`.
+    /// For `int[][]` returns `[Array, Array]`.
+    /// For `int[][]?` returns `[Array, Array, Optional]`.
+    /// For `int?[]` returns `[Optional, Array]`.
+    pub fn postfix_modifiers(&self) -> Vec<TypePostFixModifier> {
+        // if it's a union without parens, the postfix modifiers we'd find
+        // are actually the modifiers on the final union member
+        if self.is_union() {
+            return Vec::new();
+        }
+
+        collect_postfix_modifiers(
+            self.syntax
+                .children_with_tokens()
+                .filter_map(rowan::NodeOrToken::into_token)
+                .filter(|t| !t.kind().is_trivia())
+                .map(|t| t.kind()),
+        )
     }
 
     /// Check if this type is wrapped in parentheses (e.g., `(int | string)`).
@@ -465,6 +521,15 @@ impl TypeExpr {
             .and_then(|t| t.text().parse().ok())
     }
 
+    /// Check if this is a float literal type like `3.14`.
+    pub fn float_literal(&self) -> Option<String> {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .find(|t| t.kind() == SyntaxKind::FLOAT_LITERAL)
+            .map(|t| t.text().to_string())
+    }
+
     /// Check if this is a boolean literal (`true` or `false`).
     pub fn bool_literal(&self) -> Option<bool> {
         let name = self.base_name()?;
@@ -575,6 +640,14 @@ impl TypeExpr {
             .map(|n| TypeExpr { syntax: n })
             .last() // The return type is typically the last TYPE_EXPR
     }
+
+    /// Get all attributes attached to this type expression.
+    ///
+    /// These are ATTRIBUTE nodes that are direct children of the `TYPE_EXPR` node.
+    /// The parser creates these for type-level annotations like `@stream.done`.
+    pub fn attributes(&self) -> impl Iterator<Item = Attribute> {
+        self.syntax.children().filter_map(Attribute::cast)
+    }
 }
 
 /// A parameter in a function type expression.
@@ -684,6 +757,7 @@ ast_node!(WhileStmt, WHILE_STMT);
 ast_node!(ForExpr, FOR_EXPR);
 ast_node!(BlockExpr, BLOCK_EXPR);
 ast_node!(ReturnStmt, RETURN_STMT);
+ast_node!(ThrowStmt, THROW_STMT);
 ast_node!(BreakStmt, BREAK_STMT);
 ast_node!(ContinueStmt, CONTINUE_STMT);
 ast_node!(PathExpr, PATH_EXPR);
@@ -693,6 +767,12 @@ ast_node!(MatchExpr, MATCH_EXPR);
 ast_node!(MatchArm, MATCH_ARM);
 ast_node!(MatchPattern, MATCH_PATTERN);
 ast_node!(MatchGuard, MATCH_GUARD);
+ast_node!(CatchExpr, CATCH_EXPR);
+ast_node!(CatchClause, CATCH_CLAUSE);
+ast_node!(CatchArm, CATCH_ARM);
+ast_node!(CatchPattern, CATCH_PATTERN);
+ast_node!(ThrowExpr, THROW_EXPR);
+ast_node!(ThrowsClause, THROWS_CLAUSE);
 
 // Implement accessor methods
 impl SourceFile {
@@ -747,6 +827,11 @@ impl FunctionDef {
     /// Check if this is an expression function.
     pub fn is_expr_function(&self) -> bool {
         self.expr_body().is_some()
+    }
+
+    /// Get the throws clause if present (BEP-007).
+    pub fn throws_clause(&self) -> Option<ThrowsClause> {
+        self.syntax.children().find_map(ThrowsClause::cast)
     }
 }
 
@@ -1083,6 +1168,24 @@ impl ClientDef {
     }
 }
 
+impl RetryPolicyDef {
+    /// Get the retry policy name.
+    pub fn name(&self) -> Option<SyntaxToken> {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .filter(|token| {
+                token.kind() == SyntaxKind::WORD && token.parent() == Some(self.syntax.clone())
+            })
+            .nth(0)
+    }
+
+    /// Get the config block.
+    pub fn config_block(&self) -> Option<ConfigBlock> {
+        self.syntax.children().find_map(ConfigBlock::cast)
+    }
+}
+
 impl GeneratorDef {
     /// Get the generator name.
     pub fn name(&self) -> Option<SyntaxToken> {
@@ -1172,12 +1275,15 @@ impl DynamicTypeDef {
 }
 
 impl ConfigItem {
-    /// Get the config item key (first WORD token).
+    /// Get the config item key (first WORD or keyword token).
+    ///
+    /// Config items can have keyword tokens as keys (e.g., `retry_policy` inside
+    /// a client block is lexed as `KW_RETRY_POLICY`, not `WORD`).
     pub fn key(&self) -> Option<SyntaxToken> {
         self.syntax
             .children_with_tokens()
             .filter_map(rowan::NodeOrToken::into_token)
-            .find(|token| token.kind() == SyntaxKind::WORD)
+            .find(|token| matches!(token.kind(), SyntaxKind::WORD | SyntaxKind::KW_RETRY_POLICY))
     }
 
     /// Get the config item value (WORD token inside `CONFIG_VALUE`, if present).
@@ -1206,32 +1312,16 @@ impl ConfigItem {
             .map(|config_value| config_value.text_range())
     }
 
+    /// Get the typed `ConfigValue` child, if present.
+    pub fn config_value(&self) -> Option<ConfigValue> {
+        self.syntax.children().find_map(ConfigValue::cast)
+    }
+
     /// Get the full config item value as a string.
     /// This handles compound values like "python/pydantic" that span multiple tokens.
     /// Returns the unquoted text of the value.
     pub fn value_str(&self) -> Option<String> {
-        self.syntax
-            .children()
-            .find(|child| child.kind() == SyntaxKind::CONFIG_VALUE)
-            .map(|config_value| {
-                // Collect all non-whitespace, non-quote token text from nested tokens
-                config_value
-                    .descendants_with_tokens()
-                    .filter_map(rowan::NodeOrToken::into_token)
-                    .filter(|token| {
-                        !matches!(
-                            token.kind(),
-                            SyntaxKind::WHITESPACE
-                                | SyntaxKind::NEWLINE
-                                | SyntaxKind::LINE_COMMENT
-                                | SyntaxKind::BLOCK_COMMENT
-                                | SyntaxKind::QUOTE
-                        )
-                    })
-                    .map(|token| token.text().to_string())
-                    .collect::<String>()
-            })
-            .filter(|s| !s.is_empty())
+        self.config_value().and_then(|cv| cv.scalar_text())
     }
 
     /// Get a nested config block, if this item has one.
@@ -1388,6 +1478,22 @@ impl ConfigItem {
     /// Get attributes attached to this config item (e.g., `args { ... } @check(...)`).
     pub fn attributes(&self) -> impl Iterator<Item = Attribute> {
         self.syntax.children().filter_map(Attribute::cast)
+    }
+}
+
+impl ConfigValue {
+    /// Extract the unquoted scalar text content, filtering trivia and quotes.
+    ///
+    /// Returns `None` if the node contains no significant tokens.
+    pub fn scalar_text(&self) -> Option<String> {
+        let text: String = self
+            .syntax
+            .descendants_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .filter(|token| !token.kind().is_trivia() && token.kind() != SyntaxKind::QUOTE)
+            .map(|token| token.text().to_string())
+            .collect();
+        if text.is_empty() { None } else { Some(text) }
     }
 }
 
@@ -1896,6 +2002,16 @@ impl Attribute {
     pub fn has_single_string_or_unquoted_arg(&self) -> bool {
         self.arg_count() == 1 && self.arg_is_string_or_unquoted()
     }
+
+    /// Get the `ATTRIBUTE_ARGS` syntax node as-is (for deferred parsing).
+    ///
+    /// Returns the raw `SyntaxNode` for the argument list. Used by PPIR to
+    /// clone the CST node for deferred parsing in later phases.
+    pub fn arg_syntax_node(&self) -> Option<SyntaxNode> {
+        self.syntax
+            .children()
+            .find(|child| child.kind() == SyntaxKind::ATTRIBUTE_ARGS)
+    }
 }
 
 impl WhileStmt {
@@ -2151,6 +2267,9 @@ impl LetStmt {
                     | SyntaxKind::FIELD_ACCESS_EXPR
                     | SyntaxKind::INDEX_EXPR
                     | SyntaxKind::IF_EXPR
+                    | SyntaxKind::MATCH_EXPR
+                    | SyntaxKind::CATCH_EXPR
+                    | SyntaxKind::THROW_EXPR
                     | SyntaxKind::BLOCK_EXPR
                     | SyntaxKind::PAREN_EXPR
                     | SyntaxKind::ARRAY_LITERAL
@@ -2197,6 +2316,13 @@ impl ReturnStmt {
     /// Get the return value expression, if present.
     pub fn value(&self) -> Option<SyntaxNode> {
         self.syntax.children().next()
+    }
+}
+
+impl ThrowStmt {
+    /// Get the throw expression node.
+    pub fn expr(&self) -> Option<ThrowExpr> {
+        self.syntax.children().find_map(ThrowExpr::cast)
     }
 }
 
@@ -2304,6 +2430,7 @@ impl BlockExpr {
                         | SyntaxKind::FOR_EXPR
                         | SyntaxKind::BREAK_STMT
                         | SyntaxKind::CONTINUE_STMT
+                        | SyntaxKind::THROW_STMT
                         | SyntaxKind::ASSERT_STMT => Some(BlockElement::Stmt(n)),
                         // Header comment (//# name)
                         SyntaxKind::HEADER_COMMENT => Some(BlockElement::HeaderComment(n)),
@@ -2314,6 +2441,8 @@ impl BlockExpr {
                         | SyntaxKind::CALL_EXPR
                         | SyntaxKind::IF_EXPR
                         | SyntaxKind::MATCH_EXPR
+                        | SyntaxKind::CATCH_EXPR
+                        | SyntaxKind::THROW_EXPR
                         | SyntaxKind::BLOCK_EXPR
                         | SyntaxKind::PATH_EXPR
                         | SyntaxKind::FIELD_ACCESS_EXPR
@@ -2583,6 +2712,130 @@ impl MatchGuard {
     /// For `if condition`, returns the condition expression.
     pub fn condition(&self) -> Option<SyntaxNode> {
         self.syntax.children().next()
+    }
+}
+
+impl ThrowExpr {
+    /// Get the thrown expression/value.
+    pub fn value(&self) -> Option<SyntaxNode> {
+        self.syntax.children().next()
+    }
+}
+
+impl ThrowsClause {
+    /// Get the type expression for the throws clause.
+    pub fn type_expr(&self) -> Option<TypeExpr> {
+        self.syntax.children().find_map(TypeExpr::cast)
+    }
+}
+
+impl CatchExpr {
+    /// Get the base expression before the first catch clause.
+    pub fn base(&self) -> Option<SyntaxNode> {
+        self.syntax
+            .children()
+            .find(|n| n.kind() != SyntaxKind::CATCH_CLAUSE)
+    }
+
+    /// Iterate over attached catch clauses in source order.
+    pub fn clauses(&self) -> impl Iterator<Item = CatchClause> + '_ {
+        self.syntax.children().filter_map(CatchClause::cast)
+    }
+}
+
+impl CatchClause {
+    /// Get the clause keyword token (`catch`, `catch_all`).
+    pub fn keyword(&self) -> Option<SyntaxToken> {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .find(|t| matches!(t.kind(), SyntaxKind::KW_CATCH | SyntaxKind::KW_CATCH_ALL))
+    }
+
+    /// Get the binding pattern from `catch (...)`.
+    pub fn binding(&self) -> Option<CatchPattern> {
+        self.syntax.children().find_map(CatchPattern::cast)
+    }
+
+    /// Iterate over typed/fallback arm entries for this clause.
+    pub fn arms(&self) -> impl Iterator<Item = CatchArm> + '_ {
+        self.syntax.children().filter_map(CatchArm::cast)
+    }
+}
+
+impl CatchArm {
+    /// Get the pattern for this catch arm.
+    pub fn pattern(&self) -> Option<CatchPattern> {
+        self.syntax.children().find_map(CatchPattern::cast)
+    }
+
+    /// Get the body expression of this arm.
+    pub fn body(&self) -> Option<SyntaxNode> {
+        let mut found_fat_arrow = false;
+        for element in self.syntax.children_with_tokens() {
+            match element {
+                rowan::NodeOrToken::Token(token) => {
+                    if token.kind() == SyntaxKind::FAT_ARROW {
+                        found_fat_arrow = true;
+                    }
+                }
+                rowan::NodeOrToken::Node(node) => {
+                    if found_fat_arrow {
+                        return Some(node);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Check if this catch arm has a block body.
+    pub fn has_block_body(&self) -> bool {
+        self.body()
+            .map(|n| n.kind() == SyntaxKind::BLOCK_EXPR)
+            .unwrap_or(false)
+    }
+}
+
+impl CatchPattern {
+    /// Check if this is a union pattern (has `|` separators).
+    pub fn is_union(&self) -> bool {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .any(|token| token.kind() == SyntaxKind::PIPE)
+    }
+
+    /// Check if this is a typed binding pattern (has `:`).
+    pub fn is_typed_binding(&self) -> bool {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .any(|token| token.kind() == SyntaxKind::COLON)
+    }
+
+    /// Check if this is a wildcard pattern (`_`).
+    pub fn is_wildcard(&self) -> bool {
+        let tokens: Vec<_> = self
+            .syntax
+            .children_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .filter(|t| t.kind() == SyntaxKind::WORD)
+            .collect();
+        tokens.len() == 1 && tokens[0].text() == "_"
+    }
+
+    /// Get the binding name for this pattern.
+    pub fn binding_name(&self) -> Option<SyntaxToken> {
+        self.syntax
+            .children_with_tokens()
+            .filter_map(rowan::NodeOrToken::into_token)
+            .find(|token| token.kind() == SyntaxKind::WORD)
+    }
+
+    /// Get the type expression for typed bindings.
+    pub fn binding_type(&self) -> Option<TypeExpr> {
+        self.syntax.children().find_map(TypeExpr::cast)
     }
 }
 

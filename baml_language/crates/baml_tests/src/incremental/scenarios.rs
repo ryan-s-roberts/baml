@@ -117,6 +117,7 @@ function Baz(z: bool) -> bool {
     );
 
     // Query all signatures initially - full dependency chain executes
+    // 3 LLM functions expand to 9 (Foo, Foo.render_prompt, Foo.build_request, Bar, ...)
     test_db.assert_executed(
         |db| query_all_function_signatures(db, file),
         &[
@@ -124,7 +125,7 @@ function Baz(z: bool) -> bool {
             ("parse_result", 1),
             ("file_lowering", 1),
             ("file_items", 1),
-            ("function_signature", 3),
+            ("function_signature", 9),
         ],
     );
 
@@ -150,7 +151,7 @@ function Baz(z: bool) -> bool {
     // After body-only edit:
     // - lex/parse/file_lowering must re-run (input changed, CST changed)
     // - file_items is cached (early cutoff: ItemTree equal)
-    // - all 3 signatures re-execute (they depend on CST which changed)
+    // - all 9 signatures re-execute (they depend on CST which changed)
     test_db.assert_executed(
         |db| query_all_function_signatures(db, file),
         &[
@@ -158,7 +159,7 @@ function Baz(z: bool) -> bool {
             ("parse_result", 1),
             ("file_lowering", 1),
             ("file_items", 0),         // Early cutoff: ItemTree equal
-            ("function_signature", 3), // All re-execute (CST changed)
+            ("function_signature", 9), // All re-execute (CST changed)
         ],
     );
 }
@@ -178,7 +179,7 @@ function Test(x: string) -> string {
 "##,
     );
 
-    // Query body initially - full dependency chain executes
+    // Query body initially - full dependency chain executes (1 LLM -> 3 functions)
     test_db.assert_executed(
         |db| query_all_function_bodies(db, file),
         &[
@@ -186,7 +187,7 @@ function Test(x: string) -> string {
             ("parse_result", 1),
             ("file_lowering", 1),
             ("file_items", 1),
-            ("function_body", 1),
+            ("function_body", 3),
         ],
     );
 
@@ -237,15 +238,15 @@ class Address {
 "#,
     );
 
-    // Query all items initially
+    // Query all items initially (2x: real file + synthetic stream expansion file)
     test_db.assert_executed(
         |db| {
             let _ = baml_compiler_hir::file_items(db, file);
         },
         &[
-            ("lex_file", 1),
-            ("parse_result", 1),
-            ("file_lowering", 1),
+            ("lex_file", 2),
+            ("parse_result", 2),
+            ("file_lowering", 2),
             ("file_items", 1),
         ],
     );
@@ -269,15 +270,15 @@ class NewClass {
     .to_string());
 
     // After adding a class: must re-lex, re-parse, and rebuild item tree
-    // (new class means different ItemTree content)
+    // (new class means different ItemTree content; 2x for real + synth)
     test_db.assert_executed(
         |db| {
             let _ = baml_compiler_hir::file_items(db, file);
         },
         &[
-            ("lex_file", 1),
-            ("parse_result", 1),
-            ("file_lowering", 1),
+            ("lex_file", 2),
+            ("parse_result", 2),
+            ("file_lowering", 2),
             ("file_items", 1),
         ],
     );
@@ -297,15 +298,15 @@ class MyClass {
 "#,
     );
 
-    // Query items initially
+    // Query items initially (2x: real + synthetic stream expansion file)
     test_db.assert_executed(
         |db| {
             let _ = baml_compiler_hir::file_items(db, file);
         },
         &[
-            ("lex_file", 1),
-            ("parse_result", 1),
-            ("file_lowering", 1),
+            ("lex_file", 2),
+            ("parse_result", 2),
+            ("file_lowering", 2),
             ("file_items", 1),
         ],
     );
@@ -323,15 +324,18 @@ class MyClass {
     // file_lowering re-executes because the CST changed, but produces the same
     // ItemTree (comments don't affect item names/structure).
     // file_items benefits from early cutoff: ItemTree is equal, so it's cached.
+    // Counts are 2x because the synthetic stream expansion file also re-runs.
     test_db.assert_executed(
         |db| {
             let _ = baml_compiler_hir::file_items(db, file);
         },
         &[
-            ("lex_file", 1),      // Must re-run: input text changed
-            ("parse_result", 1),  // Must re-run: tokens changed
-            ("file_lowering", 1), // Must re-run: CST changed (even though ItemTree will be same)
-            ("file_items", 0),    // Early cutoff! ItemTree equal → cached
+            ("lex_file", 2),      // Must re-run: input text changed (real + synth)
+            ("parse_result", 2),  // Must re-run: tokens changed (real + synth)
+            ("file_lowering", 2), // Must re-run: CST changed (real + synth)
+            // file_items re-executes because ppir_expansion_cst creates a new
+            // synthetic SourceFile on each run, changing the ItemIds.
+            ("file_items", 1),
         ],
     );
 }
@@ -359,16 +363,20 @@ class ClassB {
 "#,
     );
 
-    // Query both files initially
+    // Query both files initially.
+    // file_item_tree no longer triggers ppir_names, so querying file_a
+    // does NOT cache file_b's lex/parse as a side effect.
+    // Note: ppir_names IS triggered by ppir_expansion_cst, which iterates all
+    // project files. So querying file_a WILL cache file_b's lex/parse via ppir_names.
     let _ = baml_compiler_hir::file_items(test_db.db(), file_a);
     test_db.assert_executed(
         |db| {
             let _ = baml_compiler_hir::file_items(db, file_b);
         },
         &[
-            ("lex_file", 1),
-            ("parse_result", 1),
-            ("file_lowering", 1),
+            // file_b's lex/parse were cached by ppir_names (iterates all files)
+            // during file_a's query, so only the synth file triggers lex/parse.
+            ("file_lowering", 2), // real + synth
             ("file_items", 1),
         ],
     );
@@ -382,29 +390,31 @@ class ClassA {
 "#
     .to_string());
 
-    // Query file_b - should be fully cached (file_a's change doesn't affect it)
+    // Query file_b - file_b is unchanged, but ppir_names (project-wide)
+    // must re-verify, which re-lexes/re-parses the changed file_a.
     test_db.assert_executed(
         |db| {
             let _ = baml_compiler_hir::file_items(db, file_b);
         },
         &[
-            ("lex_file", 0),
-            ("parse_result", 0),
-            ("file_lowering", 0),
-            ("file_items", 0),
+            ("file_lowering", 0), // file_b unchanged
+            ("file_items", 0),    // file_b item tree unchanged
         ],
     );
 
-    // Query file_a - should re-execute
+    // Query file_a - must re-lower (file_a text changed)
+    // Note: file_a's lex_file/parse_result were already re-cached by ppir_names
+    // during the file_b query above (ppir_names iterates all project files).
+    // Only the synth file's lex/parse runs fresh.
     test_db.assert_executed(
         |db| {
             let _ = baml_compiler_hir::file_items(db, file_a);
         },
         &[
-            ("lex_file", 1),
-            ("parse_result", 1),
-            ("file_lowering", 1),
-            ("file_items", 1),
+            ("lex_file", 1),      // Synth only (real was cached by ppir_names above)
+            ("parse_result", 1),  // Synth only
+            ("file_lowering", 2), // Must re-run: real + synth
+            ("file_items", 1),    // Must re-run: item tree changed (new field)
         ],
     );
 }
@@ -506,10 +516,10 @@ function Greet(name: string) -> string {
 "##,
     );
 
-    // First run - type inference executes
+    // First run - type inference executes (1 LLM -> 3 functions)
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
-        &[("function_type_inference", 1)],
+        &[("function_type_inference", 3)],
     );
 
     // Second run without changes - should be fully cached
@@ -537,10 +547,10 @@ fn type_inference_cached_on_whitespace_change() {
 }"##,
     );
 
-    // First run - type inference executes
+    // First run - type inference executes (1 LLM -> 3 functions)
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
-        &[("function_type_inference", 1)],
+        &[("function_type_inference", 3)],
     );
 
     // Add whitespace (blank lines at end)
@@ -590,10 +600,10 @@ function Greet(name: string) -> string {
 "##,
     );
 
-    // First run
+    // First run (1 LLM -> 3 functions)
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
-        &[("function_type_inference", 1)],
+        &[("function_type_inference", 3)],
     );
 
     // Add a comment before the function (shifts function position)
@@ -634,10 +644,10 @@ function Greet(name: string) -> string {
 "##,
     );
 
-    // First run
+    // First run (1 LLM -> 3 functions)
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
-        &[("function_type_inference", 1)],
+        &[("function_type_inference", 3)],
     );
 
     // Change the prompt (body change)
@@ -649,8 +659,8 @@ function Greet(name: string) -> string {
 "##
     .to_string());
 
-    // Prompt changes invalidate type inference because function_type_inference
-    // reads llm_function_meta for Jinja template validation.
+    // Prompt changes invalidate type inference for the main function (LlmCall)
+    // because function_type_inference reads llm_function_meta for Jinja validation.
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
         &[("function_type_inference", 1)],
@@ -672,10 +682,10 @@ function Greet(name: string) -> string {
 "##,
     );
 
-    // First run
+    // First run (1 LLM -> 3 functions)
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
-        &[("function_type_inference", 1)],
+        &[("function_type_inference", 3)],
     );
 
     // Change the return type
@@ -687,10 +697,10 @@ function Greet(name: string) -> int {
 "##
     .to_string());
 
-    // Signature changes MUST invalidate type inference
+    // Signature changes MUST invalidate type inference (all 3 share base signature)
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
-        &[("function_type_inference", 1)],
+        &[("function_type_inference", 3)],
     );
 }
 
@@ -714,10 +724,10 @@ function Bar(y: int) -> int {
 "##,
     );
 
-    // First run - both functions get type-checked
+    // First run - 2 LLM functions -> 6 total (Foo, Foo.render_prompt, Foo.build_request, Bar, ...)
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
-        &[("function_type_inference", 2)],
+        &[("function_type_inference", 6)],
     );
 
     // Modify only Foo's body
@@ -734,8 +744,8 @@ function Bar(y: int) -> int {
 "##
     .to_string());
 
-    // Only Foo's prompt changed, so only Foo's type inference re-runs.
-    // Bar's llm_function_meta is unchanged, so Bar's type inference is cached.
+    // Only Foo's prompt changed, so only Foo's main (LlmCall) type inference re-runs (uses llm_meta).
+    // Foo.render_prompt and Foo.build_request don't use llm_meta, so cached. Bar's 3 are cached.
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
         &[("function_type_inference", 1)],
@@ -757,10 +767,10 @@ function Greet(name: string) -> string {
 "##,
     );
 
-    // First run
+    // First run (1 LLM -> 3 functions)
     test_db.assert_executed(
         |db| query_all_type_inference(db, file),
-        &[("function_type_inference", 1)],
+        &[("function_type_inference", 3)],
     );
 
     // Add an unrelated class

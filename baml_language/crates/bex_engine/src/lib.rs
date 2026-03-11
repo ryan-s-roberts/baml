@@ -54,7 +54,7 @@
 #![allow(unsafe_code)]
 
 mod conversion;
-
+mod function_call_context;
 use std::{
     collections::HashMap,
     sync::{
@@ -63,15 +63,24 @@ use std::{
     },
 };
 
+pub use bex_events::HostSpanContext;
+use bex_events::{EventKind, FunctionEnd, FunctionEvent, FunctionStart, SpanContext};
+// Re-export event types for callers.
+pub use bex_events::{RuntimeEvent, SpanId};
 pub use bex_external_types::{BexExternalValue, EpochGuard, Ty, TypeName, UnionMetadata};
 use bex_heap::BexHeap;
 // Re-export GcStats for users of the engine
 pub use bex_heap::GcStats;
-use bex_vm::{BexVm, VmExecState};
+use bex_vm::{BexVm, SpanNotification, VmExecState};
 use bex_vm_types::{FunctionMeta, GlobalPool, HeapPtr, Object, SysOp, Value};
-use sys_types::{OpError, SysOpResult};
+pub use conversion::test_arg_to_external;
+// Re-export CancellationToken for callers.
+pub use function_call_context::{FunctionCallContext, FunctionCallContextBuilder};
+use sys_types::{CallId, OpError, SysOpResult};
 use thiserror::Error;
 use tokio::sync::{Notify, mpsc};
+pub use tokio_util::sync::CancellationToken;
+use web_time::{Instant, SystemTime};
 
 // ============================================================================
 // Engine Types
@@ -81,6 +90,38 @@ use tokio::sync::{Notify, mpsc};
 struct FutureResult {
     id: HeapPtr,
     result: Result<BexExternalValue, EngineError>,
+}
+
+/// RAII guard for in-flight async sys-op task abort handles.
+///
+/// On drop, aborts all tracked tasks so early returns (`?`) do not leave
+/// spawned work running in the background.
+struct AbortHandlesGuard {
+    handles: Vec<futures::future::AbortHandle>,
+}
+
+impl AbortHandlesGuard {
+    fn new() -> Self {
+        Self {
+            handles: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, handle: futures::future::AbortHandle) {
+        self.handles.push(handle);
+    }
+
+    fn abort_all(&self) {
+        for handle in &self.handles {
+            handle.abort();
+        }
+    }
+}
+
+impl Drop for AbortHandlesGuard {
+    fn drop(&mut self) {
+        self.abort_all();
+    }
 }
 
 /// Wrapper for VM pointer that implements Send.
@@ -125,9 +166,71 @@ impl EpochState {
     }
 }
 
+/// RAII guard: inserts (`call_id`, cancel) on construction and removes `call_id` on drop,
+/// so `active_calls` is cleaned up on all exit paths (success, early return, or panic).
+struct ActiveCallGuard<'a> {
+    active_calls: &'a Mutex<HashMap<CallId, CancellationToken>>,
+    call_id: CallId,
+}
+
+impl<'a> ActiveCallGuard<'a> {
+    fn new(
+        active_calls: &'a Mutex<HashMap<CallId, CancellationToken>>,
+        call_id: CallId,
+        cancel: &CancellationToken,
+    ) -> Result<Self, EngineError> {
+        let mut map = active_calls.lock().unwrap();
+        if map.contains_key(&call_id) {
+            return Err(EngineError::DuplicateCallId { call_id });
+        }
+        map.insert(call_id, cancel.clone());
+        Ok(Self {
+            active_calls,
+            call_id,
+        })
+    }
+}
+
+impl Drop for ActiveCallGuard<'_> {
+    fn drop(&mut self) {
+        let mut active_calls = self.active_calls.lock().unwrap();
+        active_calls.remove(&self.call_id);
+    }
+}
+
+// ============================================================================
+// Span Tracking (per-invocation, NOT on Arc<BexEngine>)
+// ============================================================================
+
+/// A single active span in the engine's per-invocation span stack.
+struct EngineSpan {
+    span_id: SpanId,
+    parent_span_id: Option<SpanId>,
+    /// The BAML function name this span represents.
+    label: String,
+    started_at: Instant,
+}
+
+/// Per-invocation span tracking state.
+///
+/// Created as a local in `call_function` and threaded through the event
+/// loop. NOT stored on the shared `BexEngine`.
+struct SpanState {
+    /// Stack of active spans (LIFO).
+    stack: Vec<EngineSpan>,
+    /// Root span ID for the entire call tree.
+    root_span_id: SpanId,
+    /// Host-side call stack prefix (from Python @trace spans).
+    /// Prepended to the engine's call stack in emitted events.
+    host_call_stack: Vec<SpanId>,
+}
+
 /// Errors that can occur during engine execution.
-#[derive(Debug, Error)]
+#[derive(Debug, PartialEq, Error)]
 pub enum EngineError {
+    #[error("Function call with ID {call_id} not found")]
+    FunctionCallNotFound { call_id: CallId },
+
     #[error("Function not found: {name}")]
     FunctionNotFound { name: String },
 
@@ -152,9 +255,15 @@ pub enum EngineError {
     #[error("Schema inconsistency: {message}")]
     SchemaInconsistency { message: String },
 
+    #[error("Operation cancelled")]
+    Cancelled,
+
     #[cfg(feature = "heap_debug")]
     #[error("Snapshot not possible for type: {type_name}")]
     CannotSnapshot { type_name: String },
+
+    #[error("A function call with ID {call_id} is already in progress")]
+    DuplicateCallId { call_id: CallId },
 }
 
 // ============================================================================
@@ -232,10 +341,17 @@ pub struct BexEngine {
     resolved_function_names: HashMap<String, (HeapPtr, bex_vm_types::FunctionKind)>,
     /// Resolved class names for instance allocation
     resolved_class_names: HashMap<String, HeapPtr>,
+    /// Resolved enum names for variant allocation
+    resolved_enum_names: HashMap<String, HeapPtr>,
     /// System operations provider.
-    sys_ops: sys_types::SysOps,
+    sys_ops: std::sync::Arc<sys_types::SysOps>,
     /// Context passed to `sys_ops` that need engine-level information.
     sys_op_ctx: sys_types::SysOpContext,
+    /// Optional event sink for persisting events (JSONL file, JS callback, etc.).
+    /// If `None`, events are only stored in the `CollectorStore` for in-memory queries.
+    event_sink: Option<std::sync::Arc<dyn bex_events::EventSink>>,
+    /// Compiled test cases from the BAML program.
+    test_cases: Vec<bex_vm_types::TestCase>,
 
     // --- Epoch-based GC coordination ---
     /// Current epoch counter (monotonically increasing).
@@ -251,6 +367,27 @@ pub struct BexEngine {
     /// Flag indicating GC is currently in progress.
     /// Used to prevent handle resolution races.
     gc_in_progress: AtomicBool,
+
+    /// Map of active function calls by ID.
+    active_calls: Mutex<HashMap<CallId, CancellationToken>>,
+}
+
+#[cfg(target_arch = "wasm32")]
+fn default_round_robin_start() -> usize {
+    // Keep wasm deterministic for tooling (matches legacy behavior).
+    0
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn default_round_robin_start() -> usize {
+    use web_time::UNIX_EPOCH;
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    #[allow(clippy::cast_possible_truncation)]
+    {
+        nanos as usize
+    }
 }
 
 impl BexEngine {
@@ -266,22 +403,38 @@ impl BexEngine {
     /// * `sys_ops` - System operations provider (use `sys_types_native::SysOps::native()` for default)
     pub fn new(
         bytecode_program: bex_vm_types::Program,
-        sys_ops: sys_types::SysOps,
+        sys_ops: std::sync::Arc<sys_types::SysOps>,
+        event_sink: Option<std::sync::Arc<dyn bex_events::EventSink>>,
     ) -> Result<Self, EngineError> {
         // Convert the pure bytecode to a VM-ready program with native functions attached
         let bytecode = bex_vm::convert_program(bytecode_program)?;
 
+        // Extract test cases before consuming other bytecode fields.
+        let test_cases = bytecode.test_cases;
+
         // Extract compile-time objects for the heap
         let compile_time_objects: Vec<Object> = bytecode.objects.into_iter().collect();
 
-        // Pre-compute class indices before moving objects to heap.
-        // This is used for allocating instances from sys-op results.
+        // Pre-compute class and enum indices before moving objects to heap.
+        // This is used for allocating instances/variants from sys-op results.
         let class_indices: Vec<(String, usize)> = compile_time_objects
             .iter()
             .enumerate()
             .filter_map(|(idx, obj)| {
                 if let Object::Class(class) = obj {
                     Some((class.name.clone(), idx))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let enum_indices: Vec<(String, usize)> = compile_time_objects
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, obj)| {
+                if let Object::Enum(enm) = obj {
+                    Some((enm.name.clone(), idx))
                 } else {
                     None
                 }
@@ -308,6 +461,12 @@ impl BexEngine {
             .map(|(name, idx)| (name, heap.compile_time_ptr(idx)))
             .collect();
 
+        // Build enum name lookup table from pre-computed indices.
+        let resolved_enum_names: HashMap<String, HeapPtr> = enum_indices
+            .into_iter()
+            .map(|(name, idx)| (name, heap.compile_time_ptr(idx)))
+            .collect();
+
         // Convert compile-time globals (ConstValue) to runtime globals (Value).
         // Object references are converted from ObjectIndex to HeapPtr.
         let globals_vec: Vec<Value> = bytecode
@@ -321,10 +480,72 @@ impl BexEngine {
         // This avoids passing raw HeapPtrs to sys_ops.
         let llm_functions = Self::extract_llm_function_info(&resolved_function_names);
 
+        // Convert compile-time client metadata to runtime format.
+        let client_metadata: std::collections::HashMap<String, sys_types::ClientBuildMeta> =
+            bytecode
+                .client_metadata
+                .into_iter()
+                .map(|(name, meta)| {
+                    let client_type = match meta.client_type {
+                        bex_vm_types::ClientBuildType::Primitive => {
+                            bex_heap::builtin_types::owned::LlmClientType::Primitive
+                        }
+                        bex_vm_types::ClientBuildType::Fallback => {
+                            bex_heap::builtin_types::owned::LlmClientType::Fallback
+                        }
+                        bex_vm_types::ClientBuildType::RoundRobin => {
+                            bex_heap::builtin_types::owned::LlmClientType::RoundRobin
+                        }
+                    };
+                    let retry_policy = meta.retry_policy.map(|rp| {
+                        bex_heap::builtin_types::owned::LlmRetryPolicy {
+                            max_retries: rp.max_retries,
+                            initial_delay_ms: rp.initial_delay_ms,
+                            multiplier: rp.multiplier,
+                            max_delay_ms: rp.max_delay_ms,
+                        }
+                    });
+                    (
+                        name,
+                        sys_types::ClientBuildMeta {
+                            client_type,
+                            sub_client_names: meta.sub_client_names,
+                            retry_policy,
+                            round_robin_start: meta
+                                .round_robin_start
+                                .and_then(|start| usize::try_from(start).ok()),
+                        },
+                    )
+                })
+                .collect();
+
+        // Build round-robin counters for composite clients.
+        let round_robin_counters = client_metadata
+            .iter()
+            .filter(|(_, meta)| {
+                matches!(
+                    meta.client_type,
+                    bex_heap::builtin_types::owned::LlmClientType::RoundRobin
+                )
+            })
+            .map(|(name, meta)| {
+                let start = meta
+                    .round_robin_start
+                    .unwrap_or_else(default_round_robin_start);
+                (
+                    name.clone(),
+                    std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(start)),
+                )
+            })
+            .collect();
+
         let sys_op_ctx = sys_types::SysOpContext {
-            llm_functions,
-            function_global_indices: bytecode.function_global_indices,
-            template_strings_macros: bytecode.template_strings_macros,
+            llm_functions: Arc::new(llm_functions),
+            function_global_indices: Arc::new(bytecode.function_global_indices),
+            template_strings_macros: Arc::new(bytecode.template_strings_macros),
+            client_metadata: Arc::new(client_metadata),
+            round_robin_counters: Arc::new(round_robin_counters),
+            cancel: CancellationToken::new(),
         };
 
         Ok(Self {
@@ -332,15 +553,33 @@ impl BexEngine {
             globals,
             resolved_function_names,
             resolved_class_names,
+            resolved_enum_names,
             sys_ops,
             sys_op_ctx,
+            event_sink,
+            test_cases,
             // Initialize epoch tracking
             current_epoch: AtomicU64::new(0),
             epoch_states: [EpochState::new(), EpochState::new()],
             epoch_drained: Notify::new(),
             gc_complete: Notify::new(),
             gc_in_progress: AtomicBool::new(false),
+            active_calls: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Emit an event: store in `CollectorStore` for in-memory queries,
+    /// then forward to the event sink (if set) for persistence.
+    fn emit(&self, event: bex_events::RuntimeEvent) {
+        bex_events::event_store::emit(&event);
+        if let Some(sink) = &self.event_sink {
+            sink.send(event);
+        }
+    }
+
+    /// Return the event sink for this engine (if any). Used by bridges for flush / `HostSpanManager`.
+    pub fn event_sink(&self) -> Option<std::sync::Arc<dyn bex_events::EventSink>> {
+        self.event_sink.clone()
     }
 
     /// Pre-extract LLM function metadata from heap objects.
@@ -468,6 +707,9 @@ impl BexEngine {
                 }
             }
 
+            // Update watch state (graph NodeIds, RootState values)
+            vm.watch.apply_forwarding(&forwarding);
+
             // Invalidate TLAB so next allocation gets chunk from new space
             vm.tlab.invalidate();
         }
@@ -496,10 +738,19 @@ impl BexEngine {
         stats
     }
 
-    /// Execute a function by name.
+    /// Execute a function by name with tracing.
     ///
-    /// This method is `&self` because each call creates its own VM with a TLAB.
-    /// Concurrent calls work naturally - each gets its own VM and TLAB.
+    /// Every call emits [`RuntimeEvent`]s to the global event store for each
+    /// traced function span boundary the VM crosses. The entry-point function
+    /// itself gets a root span automatically.
+    ///
+    /// If `host_ctx` is provided, the engine's root span is nested under the
+    /// host's active span tree (e.g., Python `@trace` spans). The host's
+    /// call stack is prepended to the engine's call stack in events.
+    ///
+    /// To collect events for a call, use [`bex_events::event_store::track`]
+    /// before calling and [`bex_events::event_store::events_for_span`] +
+    /// [`bex_events::event_store::untrack`] after.
     ///
     /// # Arguments
     ///
@@ -508,44 +759,44 @@ impl BexEngine {
     /// - `Handle` references existing heap objects
     /// - `Adt(Media | PromptAst)` allocates new builtin ADT objects on the heap
     ///
-    /// # Returns
-    ///
-    /// Returns `BexExternalValue` - the owned result value. If the return type is a union,
-    /// the value is wrapped in `Union { value, metadata }` with information about the union.
-    ///
     /// # Example
     ///
     /// ```ignore
     /// let result = engine.call_function("get_user", vec![
     ///     "Alice".into(),
     ///     42i64.into(),
-    /// ]).await?;
-    ///
-    /// match result {
-    ///     BexExternalValue::Instance { class_name, fields } => {
-    ///         println!("Got {} with {} fields", class_name, fields.len());
-    ///     }
-    ///     BexExternalValue::Union { value, metadata } => {
-    ///         println!("Got union value, selected: {}", metadata.selected_option);
-    ///     }
-    ///     _ => {}
-    /// }
+    /// ], None).await?;
     /// ```
     pub async fn call_function(
         &self,
         function_name: &str,
         args: Vec<BexExternalValue>,
+        FunctionCallContext {
+            call_id,
+            host_ctx,
+            collectors,
+            cancel,
+        }: FunctionCallContext,
     ) -> Result<BexExternalValue, EngineError> {
+        // Fail fast if already cancelled — guarantees pre-cancelled tokens
+        // always produce Err(Cancelled) regardless of function contents.
+        if cancel.is_cancelled() {
+            return Err(EngineError::Cancelled);
+        }
+
         // Wait for any in-progress GC to complete.
-        // This ensures Handles in args have stable indices.
         while self.gc_in_progress.load(Ordering::Acquire) {
             self.gc_complete.notified().await;
         }
 
-        // Look up the function to verify it exists and get its return type
+        let _call_guard = ActiveCallGuard::new(&self.active_calls, call_id, &cancel)?;
+
         let function_index = self.lookup_function(function_name)?;
-        // Get return type from function object on heap
-        let return_type = self.function_return_type(function_name).unwrap_or(Ty::Null);
+        let return_type = self
+            .function_return_type(function_name)
+            .unwrap_or(Ty::Null {
+                attr: baml_type::TyAttr::default(),
+            });
 
         // Register with current epoch
         let my_epoch = self.current_epoch.load(Ordering::Acquire);
@@ -560,18 +811,93 @@ impl BexEngine {
         // Create VM with shared heap (each VM gets its own TLAB)
         let mut vm = BexVm::new(Arc::clone(&self.heap), self.globals.clone());
 
-        // Convert ExternalValue args to Value, allocating BexExternalValue data on the heap
+        // Snapshot args for the root FunctionStart event before converting to VM values
+        let args_snapshot = args.clone();
+
         let vm_args: Vec<Value> = args
             .into_iter()
             .map(|arg| self.convert_external_to_vm_value(&mut vm, arg, &guard))
             .collect();
 
-        // Set entry point with converted args
         vm.set_entry_point(function_index, &vm_args);
 
-        // Run the event loop with epoch tracking
+        // Initialize span tracking for the root call.
+        // If host context is provided, nest under the host's span tree.
+        let engine_span_id = SpanId::new();
+        let (parent_span_id, effective_root_span_id, host_call_stack) = match &host_ctx {
+            Some(ctx) => (
+                Some(ctx.parent_span_id.clone()),
+                ctx.root_span_id.clone(),
+                ctx.call_stack.clone(),
+            ),
+            None => (None, engine_span_id.clone(), vec![]),
+        };
+
+        // Wire up collector tracking before emitting any events.
+        // Track by engine_span_id (unique per call) so each call gets its own log,
+        // even when multiple calls share the same root under @trace.
+        //
+        // The event store routes events to buckets by matching the event's span_id
+        // or parent_span_id against tracked IDs. So the function's own events
+        // (span_id == engine_span_id) and child events like LLM calls
+        // (parent_span_id == engine_span_id) both land in the same bucket.
+        for collector in &collectors {
+            collector.track(&engine_span_id);
+        }
+
+        // Allocate collectors on the heap for future $collector syntax.
+        let _collector_values: Vec<Value> = collectors
+            .iter()
+            .map(|c| {
+                let collector_ref = bex_vm_types::CollectorRef(
+                    Arc::clone(c) as Arc<dyn std::any::Any + Send + Sync>
+                );
+                vm.alloc_collector(collector_ref)
+            })
+            .collect();
+
+        // Build the call stack: host prefix + this engine span
+        let mut call_stack = host_call_stack.clone();
+        call_stack.push(engine_span_id.clone());
+
+        let root_ctx = SpanContext {
+            span_id: engine_span_id.clone(),
+            parent_span_id: parent_span_id.clone(),
+            root_span_id: effective_root_span_id.clone(),
+        };
+
+        self.emit(RuntimeEvent {
+            ctx: root_ctx,
+            call_stack,
+            timestamp: SystemTime::now(),
+            event: EventKind::Function(FunctionEvent::Start(FunctionStart {
+                name: function_name.to_string(),
+                args: args_snapshot,
+                tags: vec![],
+            })),
+        });
+
+        let mut span_state = Some(SpanState {
+            stack: vec![EngineSpan {
+                span_id: engine_span_id.clone(),
+                parent_span_id,
+                label: function_name.to_string(),
+                started_at: Instant::now(),
+            }],
+            root_span_id: effective_root_span_id,
+            host_call_stack,
+        });
+
+        // Run the event loop with span tracking
         let result = self
-            .run_event_loop_with_epoch(return_type, &mut vm, my_epoch)
+            .run_event_loop_with_epoch(
+                return_type,
+                &mut vm,
+                my_epoch,
+                call_id,
+                &mut span_state,
+                &cancel,
+            )
             .await;
 
         // Unregister from epoch
@@ -580,12 +906,29 @@ impl BexEngine {
             .fetch_sub(1, Ordering::AcqRel)
             == 1
         {
-            // We were the last active VM in this epoch
             self.epoch_drained.notify_one();
         }
 
-        // Convert BexValue to BexExternalValue, wrapping in Union if return type is union
+        // active_calls cleanup is done by ActiveCallGuard on drop.
+        //
+        // Keep genuine engine errors intact. Cancellation is surfaced directly
+        // by engine safepoints as `EngineError::Cancelled`.
         result
+    }
+
+    /// Cancel a function call by its ID.
+    ///
+    /// If the call is still running, it will be interrupted at the next
+    /// cancellation check point. If the call has already completed or the ID
+    /// is unknown, this will return an error.
+    pub fn cancel_function_call(&self, call_id: CallId) -> Result<(), EngineError> {
+        let mut active_calls = self.active_calls.lock().unwrap();
+        if let Some(cancel) = active_calls.remove(&call_id) {
+            cancel.cancel();
+            Ok(())
+        } else {
+            Err(EngineError::FunctionCallNotFound { call_id })
+        }
     }
 
     /// Look up a function by name and return its heap pointer.
@@ -632,6 +975,22 @@ impl BexEngine {
         }
     }
 
+    /// Get all compiled test cases.
+    pub fn test_cases(&self) -> &[bex_vm_types::TestCase] {
+        &self.test_cases
+    }
+
+    /// Find a test case by name.
+    pub fn test_case(
+        &self,
+        function_name: &str,
+        test_name: &str,
+    ) -> Option<&bex_vm_types::TestCase> {
+        self.test_cases
+            .iter()
+            .find(|t| t.function_names.iter().any(|n| function_name == n) && t.name == test_name)
+    }
+
     /// Collect roots from a yielded VM.
     fn collect_vm_roots(vm: &BexVm) -> Vec<HeapPtr> {
         let mut roots = Vec::new();
@@ -642,6 +1001,9 @@ impl BexEngine {
                 roots.push(*ptr);
             }
         }
+
+        // Watch state (last_assigned/last_notified values that aren't on the stack)
+        vm.watch.collect_roots(&mut roots);
 
         // Note: Frame locals are stored in the stack at the locals_offset position,
         // so they're already included in the stack iteration above.
@@ -667,6 +1029,9 @@ impl BexEngine {
                     }
                 }
 
+                // Update watch state (graph NodeIds, RootState values)
+                vm.watch.apply_forwarding(&forwarding);
+
                 // Invalidate TLAB so next allocation gets chunk from new space
                 vm.tlab.invalidate();
 
@@ -681,6 +1046,21 @@ impl BexEngine {
         }
     }
 
+    /// Engine-level cancellation safepoint.
+    ///
+    /// Keeps cancellation handling centralized in the engine loop instead of
+    /// requiring individual BAML code paths or `sys_ops` to be cancel-aware.
+    fn cancellation_safepoint(
+        cancel: &CancellationToken,
+        abort_handles: &AbortHandlesGuard,
+    ) -> Result<(), EngineError> {
+        if cancel.is_cancelled() {
+            abort_handles.abort_all();
+            return Err(EngineError::Cancelled);
+        }
+        Ok(())
+    }
+
     /// Run the VM event loop until completion, with epoch tracking.
     ///
     /// The `my_epoch` parameter is used to check if GC has been requested
@@ -690,12 +1070,79 @@ impl BexEngine {
         return_type: Ty,
         vm: &mut BexVm,
         my_epoch: u64,
+        call_id: CallId,
+        span_state: &mut Option<SpanState>,
+        cancel: &CancellationToken,
     ) -> Result<BexExternalValue, EngineError> {
         let (pending_futures, mut processed_futures) = mpsc::unbounded_channel::<FutureResult>();
+        // Abort handles for spawned async tasks.
+        //
+        // Cancellation design: the engine checks cancellation at centralized
+        // safepoints (VM loop boundaries + ScheduleFuture boundaries), and uses
+        // a biased `tokio::select!` while waiting at `Await`. This keeps
+        // cancellation in the engine, so individual sys_ops don't need to be
+        // cancellation-aware. Without abort handles, async sys-op tasks would
+        // continue as orphans after cancellation until they complete naturally.
+        // For long-running ops (HTTP requests, multi-second sleeps), that
+        // wastes real resources.
+        //
+        // Rather than making individual sys_ops cancel-aware (wrapping each in
+        // its own `tokio::select!`), we store abort handles here and kill all
+        // spawned tasks when cancellation fires. This keeps sys_op
+        // implementations simple — new sys_ops never need to think about
+        // cancellation.
+        //
+        // We use `futures::future::AbortHandle` (not `tokio::task::AbortHandle`)
+        // so the same mechanism works on both native and WASM targets.
+        let mut abort_handles = AbortHandlesGuard::new();
 
         'vm_exec: loop {
+            Self::cancellation_safepoint(cancel, &abort_handles)?;
+
             match vm.exec()? {
                 VmExecState::Complete(value) => {
+                    // "Cancel wins" semantics: if cancellation races with a
+                    // completed VM step, report `Cancelled` rather than
+                    // returning a success value.
+                    //
+                    // Still emit FunctionEnd first so tracing consumers see
+                    // a paired root FunctionStart/FunctionEnd span.
+                    let cancelled = cancel.is_cancelled();
+                    if cancelled {
+                        abort_handles.abort_all();
+                    }
+
+                    // Emit FunctionEnd for the root entry-point span if tracing
+                    if let Some(state) = span_state.as_mut() {
+                        if let Some(root_span) = state.stack.pop() {
+                            let external_result = self.vm_value_to_owned(&value);
+                            let mut full_call_stack = state.host_call_stack.clone();
+                            full_call_stack.extend(state.stack.iter().map(|s| s.span_id.clone()));
+                            full_call_stack.push(root_span.span_id.clone());
+                            let end_event = RuntimeEvent {
+                                ctx: SpanContext {
+                                    span_id: root_span.span_id,
+                                    parent_span_id: root_span.parent_span_id,
+                                    root_span_id: state.root_span_id.clone(),
+                                },
+                                call_stack: full_call_stack,
+                                timestamp: SystemTime::now(),
+                                event: EventKind::Function(FunctionEvent::End(Box::new(
+                                    FunctionEnd {
+                                        name: root_span.label,
+                                        result: external_result,
+                                        duration: root_span.started_at.elapsed(),
+                                    },
+                                ))),
+                            };
+                            self.emit(end_event);
+                        }
+                    }
+
+                    if cancelled {
+                        return Err(EngineError::Cancelled);
+                    }
+
                     return self.heap.with_gc_protection(|protected| {
                         // Convert to BexValue (handles for objects, BexExternalValue for primitives)
                         self.convert_vm_value_to_external_with_type(
@@ -716,8 +1163,16 @@ impl BexEngine {
                         .map(|v| self.vm_arg_to_bex_value(v))
                         .collect();
 
-                    match self.execute_sys_op(pending.operation, &args) {
+                    Self::cancellation_safepoint(cancel, &abort_handles)?;
+                    let sys_op_result =
+                        self.execute_sys_op(pending.operation, &args, call_id, cancel);
+                    Self::cancellation_safepoint(cancel, &abort_handles)?;
+
+                    match sys_op_result {
                         SysOpResult::Ready(result) => {
+                            // Guard the "commit to VM state" boundary.
+                            Self::cancellation_safepoint(cancel, &abort_handles)?;
+
                             // Sync operation - set future to Ready without touching stack.
                             // The VM will continue to the Await instruction which will
                             // extract the value from the Ready future.
@@ -733,29 +1188,39 @@ impl BexEngine {
                             vm.set_future_ready(id, value)?;
                         }
                         SysOpResult::Async(fut) => {
-                            // Async operation - spawn task
+                            // Guard the "spawn side effect" boundary.
+                            Self::cancellation_safepoint(cancel, &abort_handles)?;
+
+                            // Async operation — wrap in Abortable and spawn.
                             let pending_futures = pending_futures.clone();
+                            let (abort_handle, abort_reg) =
+                                futures::future::AbortHandle::new_pair();
+                            let abortable = futures::future::Abortable::new(
+                                async move {
+                                    let result = fut.await;
+                                    let _ = pending_futures.send(FutureResult {
+                                        id,
+                                        result: result.map_err(EngineError::from),
+                                    });
+                                },
+                                abort_reg,
+                            );
                             #[cfg(not(target_arch = "wasm32"))]
                             tokio::spawn(async move {
-                                let result = fut.await;
-                                let _ = pending_futures.send(FutureResult {
-                                    id,
-                                    result: result.map_err(EngineError::from),
-                                });
+                                let _ = abortable.await;
                             });
                             #[cfg(target_arch = "wasm32")]
                             wasm_bindgen_futures::spawn_local(async move {
-                                let result = fut.await;
-                                let _ = pending_futures.send(FutureResult {
-                                    id,
-                                    result: result.map_err(EngineError::from),
-                                });
+                                let _ = abortable.await;
                             });
+                            abort_handles.push(abort_handle);
                         }
                     }
                 }
 
                 VmExecState::Await(future_id) => {
+                    Self::cancellation_safepoint(cancel, &abort_handles)?;
+
                     // Check if GC is waiting for our epoch to drain
                     let current = self.current_epoch.load(Ordering::Acquire);
                     if current > my_epoch {
@@ -816,29 +1281,118 @@ impl BexEngine {
                     }
 
                     // We gotta wait for the target future.
+                    // Race against cancellation — `biased` ensures the cancel
+                    // branch is checked first, matching legacy orchestrator behavior.
                     loop {
-                        let future = processed_futures
-                            .recv()
-                            .await
-                            .ok_or(EngineError::FutureChannelClosed)?;
-
-                        let external = future.result?;
-                        let value = self.heap.with_gc_protection(|protected| {
-                            self.convert_external_to_vm_value(
-                                vm,
-                                external,
-                                &protected.epoch_guard(),
-                            )
-                        });
-                        vm.fulfil_future(future.id, value)?;
-                        if future.id == future_id {
-                            break;
+                        tokio::select! {
+                            biased;
+                            () = cancel.cancelled() => {
+                                // Abort all in-flight spawned tasks to stop
+                                // HTTP requests, sleeps, etc. immediately.
+                                abort_handles.abort_all();
+                                return Err(EngineError::Cancelled);
+                            }
+                            future = processed_futures.recv() => {
+                                let future = future
+                                    .ok_or(EngineError::FutureChannelClosed)?;
+                                let external = future.result?;
+                                let value = self.heap.with_gc_protection(|protected| {
+                                    self.convert_external_to_vm_value(
+                                        vm,
+                                        external,
+                                        &protected.epoch_guard(),
+                                    )
+                                });
+                                vm.fulfil_future(future.id, value)?;
+                                if future.id == future_id {
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
 
                 VmExecState::Notify(_notification) => {
                     // Ignore watch notifications for now
+                }
+
+                VmExecState::SpanNotify(notification) => {
+                    if let Some(state) = span_state.as_mut() {
+                        match notification {
+                            SpanNotification::FunctionEnter {
+                                function_name,
+                                frame_depth: _,
+                                args,
+                            } => {
+                                let span_id = SpanId::new();
+                                let parent_span_id = state.stack.last().map(|s| s.span_id.clone());
+
+                                // Build call_stack: host prefix + existing engine spans + new span
+                                let mut call_stack = state.host_call_stack.clone();
+                                call_stack.extend(state.stack.iter().map(|s| s.span_id.clone()));
+                                call_stack.push(span_id.clone());
+
+                                // Convert VM args to fully owned values for the event
+                                let external_args: Vec<BexExternalValue> =
+                                    args.iter().map(|v| self.vm_value_to_owned(v)).collect();
+
+                                let enter_event = RuntimeEvent {
+                                    ctx: SpanContext {
+                                        span_id: span_id.clone(),
+                                        parent_span_id: parent_span_id.clone(),
+                                        root_span_id: state.root_span_id.clone(),
+                                    },
+                                    call_stack,
+                                    timestamp: SystemTime::now(),
+                                    event: EventKind::Function(FunctionEvent::Start(
+                                        FunctionStart {
+                                            name: function_name.clone(),
+                                            args: external_args,
+                                            tags: vec![],
+                                        },
+                                    )),
+                                };
+                                self.emit(enter_event);
+
+                                state.stack.push(EngineSpan {
+                                    span_id,
+                                    parent_span_id,
+                                    label: function_name,
+                                    started_at: Instant::now(),
+                                });
+                            }
+                            SpanNotification::FunctionExit {
+                                function_name,
+                                result,
+                            } => {
+                                if let Some(span) = state.stack.pop() {
+                                    let external_result = self.vm_value_to_owned(&result);
+                                    // call_stack: host prefix + remaining engine spans + exiting span
+                                    let mut call_stack = state.host_call_stack.clone();
+                                    call_stack
+                                        .extend(state.stack.iter().map(|s| s.span_id.clone()));
+                                    call_stack.push(span.span_id.clone());
+                                    let exit_event = RuntimeEvent {
+                                        ctx: SpanContext {
+                                            span_id: span.span_id,
+                                            parent_span_id: span.parent_span_id,
+                                            root_span_id: state.root_span_id.clone(),
+                                        },
+                                        call_stack,
+                                        timestamp: SystemTime::now(),
+                                        event: EventKind::Function(FunctionEvent::End(Box::new(
+                                            FunctionEnd {
+                                                name: function_name,
+                                                result: external_result,
+                                                duration: span.started_at.elapsed(),
+                                            },
+                                        ))),
+                                    };
+                                    self.emit(exit_event);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -849,10 +1403,42 @@ impl BexEngine {
     /// All `sys_ops` (including LLM ops) go through the `SysOps` function pointer table.
     /// No more special-case matching — adding a new `#[sys_op]` in the DSL automatically
     /// gets dispatched here via the generated `SysOps::get()`.
-    fn execute_sys_op(&self, op: SysOp, args: &[BexExternalValue]) -> SysOpResult {
+    ///
+    /// A per-call context is created by cloning the shared `sys_op_ctx` with the
+    /// call's cancellation token. This is O(1) since all fields are `Arc`-wrapped.
+    fn execute_sys_op(
+        &self,
+        op: SysOp,
+        args: &[BexExternalValue],
+        call_id: CallId,
+        cancel: &CancellationToken,
+    ) -> SysOpResult {
         let args = args.iter().map(std::convert::Into::into).collect();
         let fn_ptr = self.sys_ops.get(op);
-        fn_ptr(&self.heap, args, &self.sys_op_ctx)
+        let ctx = self.sys_op_ctx.with_cancel(cancel.clone());
+        let result = fn_ptr(&self.heap, args, &ctx, call_id);
+
+        match result {
+            SysOpResult::Ready(Ok(v)) => SysOpResult::Ready(Ok(v)),
+            SysOpResult::Ready(Err(err)) => {
+                if let Err(violation) = sys_types::validate_sys_op_error(op, &err.kind) {
+                    tracing::warn!("{violation}");
+                }
+                SysOpResult::Ready(Err(err))
+            }
+            SysOpResult::Async(fut) => {
+                let boxed = Box::pin(async move {
+                    let res = fut.await;
+                    if let Err(err) = &res {
+                        if let Err(violation) = sys_types::validate_sys_op_error(op, &err.kind) {
+                            tracing::warn!("{violation}");
+                        }
+                    }
+                    res
+                });
+                SysOpResult::Async(boxed)
+            }
+        }
     }
 }
 

@@ -6,13 +6,15 @@
 
 use std::ops::Index;
 
-use baml_base::Name;
+use baml_base::{FieldAttr, Name, TyAttr};
+use indexmap::IndexMap;
+use rowan::TextRange;
 use rustc_hash::FxHashMap;
 
 use crate::{
     ids::{ItemKind, LocalItemId, hash_name},
     loc::{
-        ClassMarker, ClientMarker, EnumMarker, FunctionMarker, GeneratorMarker,
+        ClassMarker, ClientMarker, EnumMarker, FunctionMarker, GeneratorMarker, RetryPolicyMarker,
         TemplateStringMarker, TestMarker, TypeAliasMarker,
     },
     type_ref::TypeRef,
@@ -76,6 +78,7 @@ pub struct ItemTree {
     pub(crate) generators: FxHashMap<LocalItemId<GeneratorMarker>, Generator>,
     pub(crate) tests: FxHashMap<LocalItemId<TestMarker>, Test>,
     pub(crate) template_strings: FxHashMap<LocalItemId<TemplateStringMarker>, TemplateString>,
+    pub(crate) retry_policies: FxHashMap<LocalItemId<RetryPolicyMarker>, RetryPolicy>,
 
     /// Collision tracker: (`ItemKind`, hash) -> next available index.
     /// Single map for all item types, following rust-analyzer's pattern.
@@ -100,6 +103,7 @@ impl ItemTree {
             generators: FxHashMap::default(),
             tests: FxHashMap::default(),
             template_strings: FxHashMap::default(),
+            retry_policies: FxHashMap::default(),
             next_index: FxHashMap::default(),
         }
     }
@@ -173,9 +177,31 @@ impl ItemTree {
         id
     }
 
+    /// Add a retry policy and return its local ID.
+    pub fn alloc_retry_policy(
+        &mut self,
+        retry_policy: RetryPolicy,
+    ) -> LocalItemId<RetryPolicyMarker> {
+        let id = self.alloc_id(ItemKind::RetryPolicy, &retry_policy.name);
+        self.retry_policies.insert(id, retry_policy);
+        id
+    }
+
     /// Iterate over all classes in the item tree.
     pub fn iter_classes(&self) -> impl Iterator<Item = (&LocalItemId<ClassMarker>, &Class)> {
         self.classes.iter()
+    }
+
+    /// Iterate over all enums in the item tree.
+    pub fn iter_enums(&self) -> impl Iterator<Item = (&LocalItemId<EnumMarker>, &Enum)> {
+        self.enums.iter()
+    }
+
+    /// Iterate over all type aliases in the item tree.
+    pub fn iter_type_aliases(
+        &self,
+    ) -> impl Iterator<Item = (&LocalItemId<TypeAliasMarker>, &TypeAlias)> {
+        self.type_aliases.iter()
     }
 }
 
@@ -188,11 +214,15 @@ pub enum CompilerGenerated {
     /// Client resolve function - evaluates options and returns `PrimitiveClient`.
     /// Contains the client name (e.g., "GPT4" for "GPT4.resolve").
     ClientResolve { client_name: Name },
-    /// LLM function - its body is synthetically generated to call
-    /// `baml.llm.call_llm_function(name, args)`.
-    /// This is a marker only; metadata (prompt, client) is in a separate query
-    /// to preserve `ItemTree` early cutoff on body changes.
-    LlmFunction,
+    /// LLM main call - function named `base_name` (e.g. "Foo") with body
+    /// `baml.llm.call_llm_function(base_name, args)`.
+    LlmCall { base_name: Name },
+    /// LLM `render_prompt` - function named `base_name.render_prompt` with body
+    /// `baml.llm.render_prompt(base_name, args)`.
+    LlmRenderPrompt { base_name: Name },
+    /// LLM `build_request` - function named `base_name.build_request` with body
+    /// `baml.llm.build_request(base_name, args)`.
+    LlmBuildRequest { base_name: Name },
 }
 
 /// A function definition in the `ItemTree`.
@@ -220,6 +250,8 @@ pub struct Class {
     pub alias: Attribute<String>,
     /// @@description("text") - documentation for the class
     pub description: Attribute<String>,
+    /// Class-level type attribute (e.g., from @@stream.done).
+    pub ty_attr: TyAttr,
     // Note: Generic parameters are queried separately via generic_params()
     // for incrementality - changes to generics don't invalidate ItemTree
 }
@@ -237,6 +269,8 @@ pub struct Field {
     pub description: Attribute<String>,
     /// @skip - exclude field from serialization
     pub skip: Attribute<()>,
+    /// Field attributes for streaming (e.g., from @sap.*)
+    pub field_attr: FieldAttr,
 }
 
 /// An enum definition.
@@ -248,6 +282,8 @@ pub struct Enum {
     // Block attributes (@@alias)
     /// @@alias("name") - alternative name for serialization
     pub alias: Attribute<String>,
+    /// Enum-level type attribute.
+    pub ty_attr: TyAttr,
     // Note: Generic parameters are queried separately via generic_params()
 }
 
@@ -282,7 +318,65 @@ pub struct Client {
     pub default_role: Option<String>,
     /// Allowed roles for chat messages.
     pub allowed_roles: Vec<String>,
+    /// Name of the retry policy (references a top-level `retry_policy` definition).
+    pub retry_policy_name: Option<Name>,
+    /// Span of the retry policy reference (for diagnostics).
+    pub retry_policy_span: Option<TextRange>,
+    /// Sub-client names for composite clients (fallback/round-robin).
+    /// Empty for primitive clients.
+    pub sub_client_names: Vec<Name>,
+    /// Optional round-robin start index (`options { start ... }`).
+    /// Only used by `round-robin` providers.
+    pub round_robin_start: Option<i32>,
 }
+
+/// Retry policy configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetryPolicy {
+    pub name: Name,
+    /// Maximum number of retries.
+    pub max_retries: Option<String>,
+    /// Initial delay before first retry (milliseconds).
+    pub initial_delay_ms: Option<String>,
+    /// Delay multiplier for exponential backoff.
+    pub multiplier: Option<String>,
+    /// Maximum delay between retries (milliseconds).
+    pub max_delay_ms: Option<String>,
+}
+
+/// A test argument value, extracted from the CST during HIR lowering.
+///
+/// These are untyped constant values — type checking against function
+/// signatures happens at a later stage (during emission or at runtime).
+#[derive(Debug, Clone)]
+pub enum TestArgValue {
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    String(String),
+    Null,
+    Array(Vec<TestArgValue>),
+    Map(IndexMap<String, TestArgValue>),
+}
+
+// Manual PartialEq/Eq implementation to handle f64 comparison via bit pattern.
+// This satisfies ItemTree's Eq requirement (needed for salsa early cutoff).
+impl PartialEq for TestArgValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Int(a), Self::Int(b)) => a == b,
+            (Self::Float(a), Self::Float(b)) => a.to_bits() == b.to_bits(),
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::String(a), Self::String(b)) => a == b,
+            (Self::Null, Self::Null) => true,
+            (Self::Array(a), Self::Array(b)) => a == b,
+            (Self::Map(a), Self::Map(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for TestArgValue {}
 
 /// Test definition.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -291,6 +385,9 @@ pub struct Test {
 
     /// Unresolved function references.
     pub function_refs: Vec<Name>,
+
+    /// Test arguments, keyed by parameter name.
+    pub args: IndexMap<String, TestArgValue>,
 
     /// Type builder block containing dynamic type definitions.
     pub type_builder: Option<TypeBuilderBlock>,
@@ -425,5 +522,15 @@ impl Index<LocalItemId<TemplateStringMarker>> for ItemTree {
         self.template_strings
             .get(&index)
             .expect("TemplateString not found in ItemTree")
+    }
+}
+
+/// Index `ItemTree` by `RetryPolicyMarker` to get `RetryPolicy` data.
+impl Index<LocalItemId<RetryPolicyMarker>> for ItemTree {
+    type Output = RetryPolicy;
+    fn index(&self, index: LocalItemId<RetryPolicyMarker>) -> &Self::Output {
+        self.retry_policies
+            .get(&index)
+            .expect("RetryPolicy not found in ItemTree")
     }
 }

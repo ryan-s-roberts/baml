@@ -44,6 +44,8 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
                 .collect();
             let returns = &d.returns;
             let is_sys_op = d.is_sys_op;
+            let throw_strs: Vec<_> = d.throws.iter().map(String::as_str).collect();
+            let panic_strs: Vec<_> = d.panics.iter().map(String::as_str).collect();
 
             quote! {
                 BuiltinSignature {
@@ -52,6 +54,8 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
                     params: vec![#(#params),*],
                     returns: #returns,
                     is_sys_op: #is_sys_op,
+                    throws: &[#(#throw_strs),*],
+                    panics: &[#(#panic_strs),*],
                 }
             }
         })
@@ -142,6 +146,23 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
         })
         .collect();
 
+    // Generate builtin enum definitions.
+    let enum_definitions: Vec<_> = collected
+        .enum_defs
+        .iter()
+        .map(|ed| {
+            let path = &ed.path;
+            let variants: Vec<_> = ed.variants.iter().map(|v| quote!(#v)).collect();
+
+            quote! {
+                BuiltinEnumDefinition {
+                    path: #path,
+                    variants: vec![#(#variants),*],
+                }
+            }
+        })
+        .collect();
+
     // Generate sys_op entries.
     let sys_op_entries: Vec<_> = collected
         .native_defs
@@ -153,9 +174,19 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
             let path = &d.path;
             let fn_name = &d.fn_name;
             let uses_engine_ctx = d.uses_engine_ctx;
+            let throw_cats: Vec<_> = d
+                .throws
+                .iter()
+                .map(|s| format_ident!("{}", s))
+                .collect();
+            let panic_cats: Vec<_> = d
+                .panics
+                .iter()
+                .map(|s| format_ident!("{}", s))
+                .collect();
 
             quote! {
-                { #variant_name, #path, #fn_name, #uses_engine_ctx }
+                { #variant_name, #path, #fn_name, #uses_engine_ctx, [#(#throw_cats),*], [#(#panic_cats),*] }
             }
         })
         .collect();
@@ -216,6 +247,13 @@ pub(crate) fn generate(collected: &CollectedBuiltins) -> TokenStream2 {
         static BUILTIN_TYPES: std::sync::LazyLock<Vec<BuiltinTypeDefinition>> = std::sync::LazyLock::new(|| {
             vec![
                 #(#type_definitions),*
+            ]
+        });
+
+        /// All built-in enum definitions.
+        static BUILTIN_ENUMS: std::sync::LazyLock<Vec<BuiltinEnumDefinition>> = std::sync::LazyLock::new(|| {
+            vec![
+                #(#enum_definitions),*
             ]
         });
     }

@@ -12,7 +12,7 @@
 //! }
 //! ```
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use baml_compiler_diagnostics::{Diagnostic, ToDiagnostic};
 use baml_compiler_hir::{
@@ -35,7 +35,7 @@ pub struct CheckResult {
     /// Maps `FileId` to source text (for Ariadne rendering).
     pub sources: HashMap<FileId, String>,
     /// Maps `FileId` to file path (for URL generation).
-    pub file_paths: HashMap<FileId, PathBuf>,
+    pub file_paths: HashMap<FileId, std::path::PathBuf>,
 }
 
 /// Collect all diagnostics from a project.
@@ -250,6 +250,11 @@ pub fn collect_diagnostics(
         }
     }
 
+    // Filter out diagnostics from synthetic stream expansion files.
+    // These are generated files (stream_* types) and their errors duplicate
+    // diagnostics already reported on the real source files.
+    diagnostics.retain(|d| d.file_id().is_none_or(|fid| !fid.is_stream_expansion()));
+
     diagnostics
 }
 
@@ -271,7 +276,7 @@ impl ProjectDatabase {
 
         let source_files: Vec<SourceFile> = self.get_source_files();
         let mut sources: HashMap<FileId, String> = HashMap::new();
-        let mut file_paths: HashMap<FileId, PathBuf> = HashMap::new();
+        let mut file_paths: HashMap<FileId, std::path::PathBuf> = HashMap::new();
 
         // Build all maps
         for source_file in &source_files {
@@ -281,6 +286,14 @@ impl ProjectDatabase {
 
             sources.insert(file_id, text);
             file_paths.insert(file_id, path);
+
+            // Register virtual files from PPIR stream_* expansions
+            let synth = baml_compiler_ppir::ppir_expansion_cst(self, *source_file);
+            if let Some(synth_file) = synth.source_file(self) {
+                let synth_file_id = synth_file.file_id(self);
+                sources.insert(synth_file_id, synth_file.text(self).clone());
+                file_paths.insert(synth_file_id, synth_file.path(self));
+            }
         }
 
         // Use the shared collect_diagnostics function

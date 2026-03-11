@@ -57,6 +57,9 @@ pub struct ExprBody {
     /// builtin, enum variant, etc.). This is carried from TIR so that MIR
     /// lowering doesn't need to re-derive resolution from types.
     pub resolutions: rustc_hash::FxHashMap<ExprId, ResolvedValue>,
+    /// Source spans for expressions (VIR `ExprId` → source span).
+    /// Populated from HIR source map during lowering.
+    pub source_spans: rustc_hash::FxHashMap<ExprId, baml_base::Span>,
     /// Root expression of the body.
     pub root: ExprId,
 }
@@ -237,6 +240,24 @@ pub enum Expr {
         is_exhaustive: bool,
     },
 
+    // ========== Error Handling ==========
+    /// Catch expression: `expr catch (e) { ... } catch_all (e) { ... }`
+    ///
+    /// Wraps a callable expression with one or more catch clauses.
+    /// Returns the base expression's value on success, or the matched
+    /// catch arm's value on error.
+    Catch {
+        /// The base expression being wrapped (typically a `Call`).
+        base: ExprId,
+        /// Ordered catch clauses.
+        clauses: Vec<CatchClause>,
+    },
+
+    /// Throw expression: `throw expr`
+    ///
+    /// Evaluates the expression and throws it as an error. Diverges (never returns).
+    Throw { value: ExprId },
+
     // ========== Watch Notifications ==========
     /// Block notification: `//# name`
     ///
@@ -247,6 +268,40 @@ pub enum Expr {
         /// The header level (number of # symbols)
         level: usize,
     },
+}
+
+// ============================================================================
+// Catch/Throw Types
+// ============================================================================
+
+/// The kind of a catch clause.
+///
+/// - `Catch`: only catches the listed exception types; unmatched errors rethrow.
+/// - `CatchAll`: catches all errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatchClauseKind {
+    Catch,
+    CatchAll,
+}
+
+/// A single catch clause attached to a callable expression.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatchClause {
+    /// The kind of catch (`catch` / `catch_all`).
+    pub kind: CatchClauseKind,
+    /// The error binding pattern (e.g., `e` in `catch (e)`).
+    pub binding: PatId,
+    /// The catch arms (pattern => body).
+    pub arms: Vec<CatchArm>,
+}
+
+/// A single arm within a catch clause.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatchArm {
+    /// The pattern to match the caught error against.
+    pub pattern: PatId,
+    /// The body expression (result if this arm matches).
+    pub body: ExprId,
 }
 
 /// A single arm in a match expression.
@@ -298,9 +353,6 @@ pub enum BinaryOp {
     BitXor,
     Shl,
     Shr,
-
-    // Type checking
-    Instanceof,
 }
 
 /// Unary operators.
@@ -369,7 +421,10 @@ impl From<baml_compiler_hir::BinaryOp> for BinaryOp {
             baml_compiler_hir::BinaryOp::BitXor => BinaryOp::BitXor,
             baml_compiler_hir::BinaryOp::Shl => BinaryOp::Shl,
             baml_compiler_hir::BinaryOp::Shr => BinaryOp::Shr,
-            baml_compiler_hir::BinaryOp::Instanceof => BinaryOp::Instanceof,
+            // deprecated instanceof is rejected at the TIR level; it should never reach VIR.
+            baml_compiler_hir::BinaryOp::Instanceof => {
+                unreachable!("instanceof rejected by type checker")
+            }
         }
     }
 }
@@ -396,6 +451,15 @@ impl From<baml_compiler_hir::AssignOp> for AssignOp {
             baml_compiler_hir::AssignOp::BitXor => AssignOp::BitXor,
             baml_compiler_hir::AssignOp::Shl => AssignOp::Shl,
             baml_compiler_hir::AssignOp::Shr => AssignOp::Shr,
+        }
+    }
+}
+
+impl From<baml_compiler_hir::CatchClauseKind> for CatchClauseKind {
+    fn from(kind: baml_compiler_hir::CatchClauseKind) -> Self {
+        match kind {
+            baml_compiler_hir::CatchClauseKind::Catch => CatchClauseKind::Catch,
+            baml_compiler_hir::CatchClauseKind::CatchAll => CatchClauseKind::CatchAll,
         }
     }
 }

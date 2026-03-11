@@ -1,235 +1,111 @@
 ---
-source: target/debug/build/baml_tests-6b46971f444a527b/out/generated_tests.rs
-expression: output
+source: crates/baml_tests/src/generated_tests.rs
 ---
-=== BYTECODE ===
-Functions: 7
-Objects: 64
-Globals: 54
+function Calculate() -> int {
+    load_const 1
+    load_const 2
+    bin_op +
+    store_var a
+    load_var a
+    load_const 3
+    bin_op *
+    store_var b
+    load_var a
+    load_var b
+    bin_op +
+    load_var b
+    load_const 2
+    bin_op /
+    load_const 1
+    bin_op -
+    bin_op *
+    return
+}
 
-Function Calculate (arity: 0, kind: Bytecode):
-     0    LOAD_CONST 0   (null)
-     1    LOAD_CONST 0   (null)
-     2    LOAD_CONST 1   (1)
-     3    LOAD_CONST 2   (2)
-     4    BIN_OP +       
-     5    STORE_VAR 1    (a)
-     6    LOAD_VAR 1     (a)
-     7    LOAD_CONST 3   (3)
-     8    BIN_OP *       
-     9    STORE_VAR 2    (b)
-     10   LOAD_VAR 1     (a)
-     11   LOAD_VAR 2     (b)
-     12   BIN_OP +       
-     13   LOAD_VAR 2     (b)
-     14   LOAD_CONST 2   (2)
-     15   BIN_OP /       
-     16   LOAD_CONST 1   (1)
-     17   BIN_OP -       
-     18   BIN_OP *       
-     19   RETURN         
+function FieldAccess(user: User) -> string {
+    load_var user
+    load_field .name
+    store_var name
+    load_var user
+    load_field .profile
+    load_field .bio
+    store_var bio
+    load_var user
+    load_field .tags
+    load_const 0
+    load_array_element
+    store_var firstTag
+    load_var user
+    load_field .profile
+    load_field .settings
+    load_field .theme
+    return
+}
 
-Function FieldAccess (arity: 1, kind: Bytecode):
-     0    LOAD_CONST 0         (null)
-     1    LOAD_CONST 0         (null)
-     2    LOAD_CONST 0         (null)
-     3    LOAD_VAR 1           (user)
-     4    LOAD_FIELD 0         
-     5    STORE_VAR 2          (name)
-     6    LOAD_VAR 1           (user)
-     7    LOAD_FIELD 1         
-     8    LOAD_FIELD 0         
-     9    STORE_VAR 3          (bio)
-     10   LOAD_VAR 1           (user)
-     11   LOAD_FIELD 2         
-     12   LOAD_CONST 1         (0)
-     13   LOAD_ARRAY_ELEMENT   
-     14   STORE_VAR 4          (firstTag)
-     15   LOAD_VAR 1           (user)
-     16   LOAD_FIELD 1         
-     17   LOAD_FIELD 1         
-     18   LOAD_FIELD 0         
-     19   RETURN               
+function IndexAccess(users: IndexUser[]) -> string {
+    load_var users
+    load_const 0
+    load_array_element
+    store_var first
+    load_var users
+    load_const 1
+    load_array_element
+    store_var second
+    load_var users
+    load_const 0
+    load_array_element
+    load_field .tags
+    load_const 0
+    load_array_element
+    store_var tag
+    load_var users
+    load_const 0
+    load_array_element
+    load_field .name
+    return
+}
 
-Function IndexAccess (arity: 1, kind: Bytecode):
-     0    LOAD_CONST 0         (null)
-     1    LOAD_CONST 0         (null)
-     2    LOAD_CONST 0         (null)
-     3    LOAD_VAR 1           (users)
-     4    LOAD_CONST 1         (0)
-     5    LOAD_ARRAY_ELEMENT   
-     6    STORE_VAR 2          (first)
-     7    LOAD_VAR 1           (users)
-     8    LOAD_CONST 2         (1)
-     9    LOAD_ARRAY_ELEMENT   
-     10   STORE_VAR 3          (second)
-     11   LOAD_VAR 1           (users)
-     12   LOAD_CONST 1         (0)
-     13   LOAD_ARRAY_ELEMENT   
-     14   LOAD_FIELD 2         
-     15   LOAD_CONST 1         (0)
-     16   LOAD_ARRAY_ELEMENT   
-     17   STORE_VAR 4          (tag)
-     18   LOAD_VAR 1           (users)
-     19   LOAD_CONST 1         (0)
-     20   LOAD_ARRAY_ELEMENT   
-     21   LOAD_FIELD 0         
-     22   RETURN               
+function TestPrecedence() -> bool {
+    load_const 2
+    load_const 3
+    bin_op *
+    load_const 4
+    bin_op +
+    store_var c
+    load_const 2
+    load_const 3
+    load_const 4
+    bin_op *
+    bin_op +
+    load_const 10
+    load_const 2
+    bin_op +
+    cmp_op >
+    store_var b
+    load_const true
+    pop_jump_if_false L0
+    jump L3
 
-Function TestPrecedence (arity: 0, kind: Bytecode):
-     0    LOAD_CONST 0           (null)
-     1    LOAD_CONST 0           (null)
-     2    LOAD_CONST 0           (null)
-     3    LOAD_CONST 1           (2)
-     4    LOAD_CONST 2           (3)
-     5    BIN_OP *               
-     6    LOAD_CONST 3           (4)
-     7    BIN_OP +               
-     8    STORE_VAR 1            (c)
-     9    LOAD_CONST 1           (2)
-     10   LOAD_CONST 2           (3)
-     11   LOAD_CONST 3           (4)
-     12   BIN_OP *               
-     13   BIN_OP +               
-     14   LOAD_CONST 4           (10)
-     15   LOAD_CONST 1           (2)
-     16   BIN_OP +               
-     17   CMP_OP >               
-     18   STORE_VAR 2            (b)
-     19   LOAD_CONST 5           (true)
-     20   POP_JUMP_IF_FALSE +2   (to 22)
-     21   JUMP +10               (to 31)
-     22   LOAD_CONST 6           (false)
-     23   POP_JUMP_IF_FALSE +2   (to 25)
-     24   JUMP +4                (to 28)
-     25   LOAD_CONST 6           (false)
-     26   STORE_VAR 3            (d)
-     27   JUMP +6                (to 33)
-     28   LOAD_CONST 6           (false)
-     29   STORE_VAR 3            (d)
-     30   JUMP +3                (to 33)
-     31   LOAD_CONST 5           (true)
-     32   STORE_VAR 3            (d)
-     33   LOAD_VAR 3             (d)
-     34   RETURN                 
+  L0:
+    load_const false
+    pop_jump_if_false L1
+    jump L2
 
-Function baml.llm.build_request (arity: 2, kind: Bytecode):
-     0    LOAD_CONST 0        (null)
-     1    LOAD_CONST 0        (null)
-     2    LOAD_CONST 0        (null)
-     3    LOAD_CONST 0        (null)
-     4    LOAD_GLOBAL 43      (<fn baml.llm.get_jinja_template>)
-     5    LOAD_VAR 1          (function_name)
-     6    DISPATCH_FUTURE 1   
-     7    AWAIT               
-     8    STORE_VAR 3         (jinja_string)
-     9    LOAD_GLOBAL 46      (<fn baml.llm.get_client_function>)
-     10   LOAD_VAR 1          (function_name)
-     11   DISPATCH_FUTURE 1   
-     12   AWAIT               
-     13   CALL 0              
-     14   STORE_VAR 4         (primitive_client)
-     15   LOAD_GLOBAL 45      (<fn baml.llm.PrimitiveClient.render_prompt>)
-     16   LOAD_VAR 4          (primitive_client)
-     17   LOAD_VAR 3          (jinja_string)
-     18   LOAD_VAR 2          (args)
-     19   DISPATCH_FUTURE 3   
-     20   AWAIT               
-     21   STORE_VAR 5         (prompt)
-     22   LOAD_GLOBAL 35      (<fn baml.llm.PrimitiveClient.specialize_prompt>)
-     23   LOAD_VAR 4          (primitive_client)
-     24   LOAD_VAR 5          (prompt)
-     25   DISPATCH_FUTURE 2   
-     26   AWAIT               
-     27   STORE_VAR 6         (specialized_prompt)
-     28   LOAD_GLOBAL 36      (<fn baml.llm.PrimitiveClient.build_request>)
-     29   LOAD_VAR 4          (primitive_client)
-     30   LOAD_VAR 6          (specialized_prompt)
-     31   DISPATCH_FUTURE 2   
-     32   AWAIT               
-     33   RETURN              
+  L1:
+    load_const false
+    store_var d
+    jump L4
 
-Function baml.llm.call_llm_function (arity: 2, kind: Bytecode):
-     0    LOAD_CONST 0        (null)
-     1    LOAD_CONST 0        (null)
-     2    LOAD_CONST 0        (null)
-     3    LOAD_CONST 0        (null)
-     4    LOAD_CONST 0        (null)
-     5    LOAD_CONST 0        (null)
-     6    LOAD_CONST 0        (null)
-     7    LOAD_GLOBAL 43      (<fn baml.llm.get_jinja_template>)
-     8    LOAD_VAR 1          (function_name)
-     9    DISPATCH_FUTURE 1   
-     10   AWAIT               
-     11   STORE_VAR 3         (jinja_string)
-     12   LOAD_GLOBAL 46      (<fn baml.llm.get_client_function>)
-     13   LOAD_VAR 1          (function_name)
-     14   DISPATCH_FUTURE 1   
-     15   AWAIT               
-     16   CALL 0              
-     17   STORE_VAR 4         (primitive_client)
-     18   LOAD_GLOBAL 45      (<fn baml.llm.PrimitiveClient.render_prompt>)
-     19   LOAD_VAR 4          (primitive_client)
-     20   LOAD_VAR 3          (jinja_string)
-     21   LOAD_VAR 2          (args)
-     22   DISPATCH_FUTURE 3   
-     23   AWAIT               
-     24   STORE_VAR 5         (prompt)
-     25   LOAD_GLOBAL 35      (<fn baml.llm.PrimitiveClient.specialize_prompt>)
-     26   LOAD_VAR 4          (primitive_client)
-     27   LOAD_VAR 5          (prompt)
-     28   DISPATCH_FUTURE 2   
-     29   AWAIT               
-     30   STORE_VAR 6         (specialized_prompt)
-     31   LOAD_GLOBAL 36      (<fn baml.llm.PrimitiveClient.build_request>)
-     32   LOAD_VAR 4          (primitive_client)
-     33   LOAD_VAR 6          (specialized_prompt)
-     34   DISPATCH_FUTURE 2   
-     35   AWAIT               
-     36   STORE_VAR 7         (http_request)
-     37   LOAD_GLOBAL 33      (<fn baml.http.send>)
-     38   LOAD_VAR 7          (http_request)
-     39   DISPATCH_FUTURE 1   
-     40   AWAIT               
-     41   STORE_VAR 8         (http_response)
-     42   LOAD_GLOBAL 30      (<fn baml.http.Response.text>)
-     43   LOAD_VAR 8          (http_response)
-     44   DISPATCH_FUTURE 1   
-     45   AWAIT               
-     46   STORE_VAR 9         (result)
-     47   LOAD_GLOBAL 37      (<fn baml.llm.PrimitiveClient.parse>)
-     48   LOAD_VAR 4          (primitive_client)
-     49   LOAD_VAR 9          (result)
-     50   LOAD_VAR 1          (function_name)
-     51   DISPATCH_FUTURE 3   
-     52   AWAIT               
-     53   RETURN              
+  L2:
+    load_const false
+    store_var d
+    jump L4
 
-Function baml.llm.render_prompt (arity: 2, kind: Bytecode):
-     0    LOAD_CONST 0        (null)
-     1    LOAD_CONST 0        (null)
-     2    LOAD_CONST 0        (null)
-     3    LOAD_GLOBAL 43      (<fn baml.llm.get_jinja_template>)
-     4    LOAD_VAR 1          (function_name)
-     5    DISPATCH_FUTURE 1   
-     6    AWAIT               
-     7    STORE_VAR 3         (jinja_string)
-     8    LOAD_GLOBAL 46      (<fn baml.llm.get_client_function>)
-     9    LOAD_VAR 1          (function_name)
-     10   DISPATCH_FUTURE 1   
-     11   AWAIT               
-     12   CALL 0              
-     13   STORE_VAR 4         (primitive_client)
-     14   LOAD_GLOBAL 45      (<fn baml.llm.PrimitiveClient.render_prompt>)
-     15   LOAD_VAR 4          (primitive_client)
-     16   LOAD_VAR 3          (jinja_string)
-     17   LOAD_VAR 2          (args)
-     18   DISPATCH_FUTURE 3   
-     19   AWAIT               
-     20   STORE_VAR 5         (prompt)
-     21   LOAD_GLOBAL 35      (<fn baml.llm.PrimitiveClient.specialize_prompt>)
-     22   LOAD_VAR 4          (primitive_client)
-     23   LOAD_VAR 5          (prompt)
-     24   DISPATCH_FUTURE 2   
-     25   AWAIT               
-     26   RETURN
+  L3:
+    load_const true
+    store_var d
+
+  L4:
+    load_var d
+    return
+}
