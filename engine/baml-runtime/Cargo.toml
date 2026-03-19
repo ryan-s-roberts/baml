@@ -97,15 +97,15 @@ include_dir.workspace = true
 infer.workspace = true
 url.workspace = true
 shell-escape.workspace = true
-aws-sigv4 = { version = "1.2.2", optional = true }
-aws-credential-types = { version = "1.2.1", optional = true }
-aws-runtime = { version = "1.5.5", optional = true }
-aws-smithy-async = { version = "1.2.1", optional = true }
-aws-smithy-runtime-api = { version = "1.7.0", optional = true }
-aws-smithy-types = { version = "1.2.0", optional = true }
-aws-smithy-runtime = { version = "1.6.0", optional = true }
+aws-sigv4 = { version = "1", optional = true }
+aws-credential-types = { version = "1", optional = true }
+aws-runtime = { version = "1", optional = true }
+aws-smithy-async = { version = "1", optional = true }
+aws-smithy-runtime-api = { version = "1", optional = true }
+aws-smithy-types = { version = "1", optional = true }
+aws-smithy-runtime = { version = "1", optional = true }
 enum_dispatch.workspace = true
-aws-smithy-json = { version = "0.60.7", optional = true }
+aws-smithy-json = { version = "0.60", optional = true }
 pretty_assertions.workspace = true
 valuable.workspace = true
 tracing.workspace = true
@@ -139,40 +139,40 @@ optional = true
 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-aws-config = { version = "=1.5.3", default-features = false, features = [], optional = true }
-aws-sdk-bedrockruntime = { version = "=1.106.0", default-features = false, features = [], optional = true }
-colored = { version = "2.1.0", default-features = false, features = [
+aws-config = { version = "1", default-features = false, features = [], optional = true }
+aws-sdk-bedrockruntime = { version = "1", default-features = false, features = [], optional = true }
+colored = { version = "2", default-features = false, features = [
   "no-color",
 ] }
-futures-timer = { version = "3.0.3", features = ["wasm-bindgen"] }
+futures-timer = { version = "3", features = ["wasm-bindgen"] }
 js-sys.workspace = true
-reqwest = { version = "0.12.12", features = [
+reqwest = { version = "0.12", features = [
   "stream",
   "json",
   "native-tls-vendored",
   "native-tls-alpn",
 ] }
 #
-send_wrapper = { version = "0.6.0", features = ["futures"] }
-serde-wasm-bindgen = "0.6.5"
+send_wrapper = { version = "0.6", features = ["futures"] }
+serde-wasm-bindgen = "0.6"
 uuid = { workspace = true, features = ["v4", "serde", "js"] }
 # WARNING: Do not add serde-serialize feature to wasm-bindgen.
 # It may produce a dependency cycle in projects that use wasm and import baml.
 wasm-bindgen = "^0.2.74"
 wasm-bindgen-futures = "0.4"
 web-sys.workspace = true
-wasmtimer = "0.4.3"
+wasmtimer = "0.4"
 tokio = { version = "1", features = ["rt", "sync"] }
 
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-aws-config = { version = "=1.5.3", optional = true }
-aws-sdk-bedrockruntime = { version = "=1.106.0", default-features = false, features = [], optional = true }
+aws-config = { version = "1", optional = true }
+aws-sdk-bedrockruntime = { version = "1", default-features = false, features = [], optional = true }
 # Required for native GCP/Vertex auth (TLS, JWT, etc.)
-gcp_auth = { version = "0.12.3", optional = true }
-hostname = "0.3.1"
-jsonwebtoken = { version = "9.3.0", optional = true }
-ring = { version = "0.17.4", features = ["std"], optional = true }
+gcp_auth = { version = "0.12", optional = true }
+hostname = "0.3"
+jsonwebtoken = { version = "9", optional = true }
+ring = { version = "0.17", features = ["std"], optional = true }
 # Tokio: minimal set for runtime (no "full"). CLI/test_executor need signal; fs/process only used by CLI.
 # When building with minimal-runtime only, this keeps tokio smaller than "full".
 tokio = { version = "1", default-features = false, features = [
@@ -189,7 +189,10 @@ tokio = { version = "1", default-features = false, features = [
 reqwest.workspace = true
 # CLI / codegen / dev-only (optional; omit with default-features = false, features = ["minimal-runtime"])
 axum = { workspace = true, optional = true }
-axum-extra = { version = "0.9", features = ["erased-json", "typed-header"], optional = true }
+axum-extra = { version = "0.9", features = [
+  "erased-json",
+  "typed-header",
+], optional = true }
 criterion = { workspace = true, optional = true }
 notify-debouncer-full = { version = "0.3", optional = true }
 walkdir = { workspace = true, optional = true }
@@ -205,7 +208,15 @@ reedline = { version = "0.37", optional = true }
 
 
 [features]
-default = ["skip-integ-tests", "codegen", "cli", "colored", "pretty", "aws", "gcp"]
+default = [
+  "skip-integ-tests",
+  "codegen",
+  "cli",
+  "colored",
+  "pretty",
+  "aws",
+  "gcp",
+]
 defaults = ["skip-integ-tests"]
 internal = []
 skip-integ-tests = []
@@ -232,11 +243,7 @@ aws = [
   "dep:aws-sdk-bedrockruntime",
 ]
 # GCP Vertex AI provider support. Pulls in gcp_auth, jsonwebtoken, ring.
-gcp = [
-  "dep:gcp_auth",
-  "dep:jsonwebtoken",
-  "dep:ring",
-]
+gcp = ["dep:gcp_auth", "dep:jsonwebtoken", "dep:ring"]
 # Codegen (generate_sdk, run_codegen). Enabled by default; off when using minimal-runtime.
 codegen = ["dep:generators-lib", "dep:generators-openapi"]
 # CLI (baml-cli, serve, repl, etc.). Enabled by default; off when using minimal-runtime.
@@ -267,15 +274,15 @@ cli = [
 assert_cmd = "2"
 console_log = "1"
 env_logger.workspace = true
-criterion = "0.5.1"
-dissimilar = "1.0.4"
-expect-test = "1.1.0"
+criterion = "0.5"
+dissimilar = "1"
+expect-test = "1"
 indoc.workspace = true
-either = "1.8.1"
-rstest = "0.22.0"
-wasm-bindgen-test = "0.3.42"
-walkdir = "2.5.0"
-wasm-logger = "0.2.0"
-serial_test = "3.2.0"
-console_error_panic_hook = "0.1.7"
-insta = { version = "1.43.2", features = ["yaml", "glob"] }
+either = "1"
+rstest = "0.22"
+wasm-bindgen-test = "0.3"
+walkdir = "2"
+wasm-logger = "0.2"
+serial_test = "3"
+console_error_panic_hook = "0.1"
+insta = { version = "1", features = ["yaml", "glob"] }

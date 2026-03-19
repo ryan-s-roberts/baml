@@ -38,7 +38,7 @@ once_cell = "1.19"
 jsonish = { path = "../baml-lib/jsonish" }
 log.workspace = true
 # Consult https://pyo3.rs/main/migration for migration instructions
-pyo3 = { version = "0.23.3", default-features = false, features = [
+pyo3 = { version = "0.23", default-features = false, features = [
   "abi3-py38",
   "extension-module",
   "generate-import-lib",
@@ -57,14 +57,14 @@ serde_json.workspace = true
 stream-cancel = "0.8"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["full"] }
-tracing-subscriber = { version = "0.3.18", features = [
+tracing-subscriber = { version = "0.3", features = [
   "json",
   "env-filter",
   "valuable",
 ] }
 uuid.workspace = true
 either.workspace = true
-ctrlc = "3.4.5"
+ctrlc = "3"
 
 [build-dependencies]
 pyo3-build-config = "0.21.2"

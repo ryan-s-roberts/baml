@@ -15,8 +15,8 @@ env_logger.workspace = true
 log.workspace = true
 reqwest.workspace = true
 tokio = { version = "1.36", features = ["full"] }
-tracing = { version = "0.1.40", features = ["valuable"] }
-tracing-core = { version = "0.1.33" }
+tracing = { version = "0.1", features = ["valuable"] }
+tracing-core = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid.workspace = true
 web-time.workspace = true

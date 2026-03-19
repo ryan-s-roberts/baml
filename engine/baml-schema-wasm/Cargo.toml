@@ -34,7 +34,7 @@ cfg-if.workspace = true
 console_error_panic_hook = "0.1.7"
 console_log = { version = "1", features = ["color"] }
 futures.workspace = true
-getrandom = { version = "0.2.15", features = ["js"] }
+getrandom = { version = "0.2", features = ["js"] }
 indexmap.workspace = true
 internal-baml-core.workspace = true
 generators-lib = { path = "../generators/utils/generators_lib" }
@@ -52,7 +52,7 @@ url.workspace = true
 uuid = { workspace = true, features = ["v4", "js"] }
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
-wasm-logger = { version = "0.2.0" }
+wasm-logger = { version = "0.2" }
 web-sys.workspace = true
 web-time.workspace = true
 either = "1.8.1"
@@ -70,7 +70,7 @@ wasm-bindgen-test = "0.3.43"
 walkdir = "2.5.0"
 wasm-logger = "0.2.0"
 wasmtimer = "0.4.1"
-futures-timer = { version = "3.0.3", features = ["wasm-bindgen"] }
+futures-timer = { version = "3", features = ["wasm-bindgen"] }
 
 [features]
 default = []
